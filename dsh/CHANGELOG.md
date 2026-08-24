@@ -5,7 +5,14 @@ follow Semantic Versioning. The exact tier, plugin inventory, maturity, and
 content hashes remain authoritative in each tarball's `dsh-lock.json` and
 `release-lock.json`.
 
-## Unreleased
+## 0.1.9 - 2026-08-24
+
+- Restore the finance-track `shell.overlay` indicator on DSH 0.1.1-rc.2 by
+  adopting the session projection state/wire split, pinning the current host
+  peers, and exercising the current command invocation contract in the real
+  runtime smoke.
+- Pin the exact `@deepseek-ai/dsh@0.1.1-rc.2` host and service peer graph, and
+  pin the trusted-publishing workflow to that tested host.
 
 ## 0.1.8 - 2026-08-19
 

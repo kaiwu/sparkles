@@ -124,8 +124,8 @@ function registerSessionEventTypes(knownSessionEventTypes) {
   ) {
     throw new Error("DSH session event vocabulary is unavailable");
   }
-  // DSH rc.7 exports the process-wide vocabulary as a ReadonlySet but has no
-  // registration service for npm plugins. The bundle pins that host version
+  // DSH exports the process-wide vocabulary as a ReadonlySet but has no
+  // registration service for npm plugins. The bundle pins the tested host version
   // and contributes its two required event types before any cold session can
   // load. Vocabulary knowledge is process-lifetime state, like DSH's compiled
   // catalog, so it deliberately outlives plugin fibers and HMR disposal.

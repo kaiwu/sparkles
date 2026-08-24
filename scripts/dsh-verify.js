@@ -306,6 +306,7 @@ export async function verifyAgainstDshTools({ log = console.log } = {}) {
       await ctx.commands.execute(
         first.agent,
         `/${track}-track`,
+        [],
         new AbortController().signal,
       );
       const status = ctx.sessionProjections.snapshot(first.agent.session)
@@ -336,6 +337,7 @@ export async function verifyAgainstDshTools({ log = console.log } = {}) {
     await ctx.commands.execute(
       first.agent,
       "/cn-track",
+      [],
       new AbortController().signal,
     );
     overlayProjection = !failures.some((failure) =>

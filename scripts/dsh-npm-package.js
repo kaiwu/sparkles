@@ -837,6 +837,24 @@ function resolveDshCli() {
   }
 }
 
+export function assertDshHostVersion(
+  dshCommand,
+  expectedVersion,
+  { run = runCaptured } = {},
+) {
+  const result = requireSuccess(
+    run(dshCommand, ["--version"], {}),
+    "DSH host version check",
+  );
+  const actualVersion = result.stdout.trim();
+  if (actualVersion !== expectedVersion) {
+    throw new Error(
+      `Installed DSH host is ${actualVersion || "unknown"}, expected exact ${expectedVersion}`,
+    );
+  }
+  return actualVersion;
+}
+
 /**
  * Install the exact tarball into a clean npm prefix and smoke its DSH bundle
  * contract: import the entrypoint, assert the Cordis plugin shape and
@@ -918,9 +936,18 @@ if (JSON.stringify(plugin.inject) !== JSON.stringify(["tools", "commands", "agen
 
     // Compose the installed bundle in a real, isolated DSH profile.
     if (typeof dshCommand !== "string" || dshCommand.trim().length === 0) {
+      if (summary.publishable) {
+        throw new Error(
+          `DSH release verification requires @deepseek-ai/dsh@${DSH_PEERS["@deepseek-ai/dsh"]}`,
+        );
+      }
       console.log("DSH npm install smoke passed (dsh CLI unavailable; entrypoint contract verified)");
       return summary;
     }
+    const dshVersion = assertDshHostVersion(
+      dshCommand,
+      DSH_PEERS["@deepseek-ai/dsh"],
+    );
     const dshHome = mkdtempSync(join(tmpdir(), "dsh-sparkles-smoke-home-"));
     const profileName = "dsh-sparkles-smoke";
     try {
@@ -946,7 +973,7 @@ if (JSON.stringify(plugin.inject) !== JSON.stringify(["tools", "commands", "agen
       rmSync(dshHome, { recursive: true, force: true });
     }
     console.log(
-      `${summary.throughTierId} dsh-sparkles npm install smoke passed with pdfjs-dist ${pdfVersion}`,
+      `${summary.throughTierId} dsh-sparkles npm install smoke passed with DSH ${dshVersion} and pdfjs-dist ${pdfVersion}`,
     );
     return summary;
   } finally {

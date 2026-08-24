@@ -1,6 +1,7 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "dsh_release": {
+    "version": "0.1.9",
     "status": "product_useful",
     "target": "T6",
     "reason": null

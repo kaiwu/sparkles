@@ -145,10 +145,11 @@ browser entrypoint for `shell.overlay`. All 135 ledger components are covered:
 131 global-safe Pi shells and four `scoped_pi` counterparts instantiated once
 per DSH agent. DSH-only Cordis entries remain in the isolated `dsh/plugins/`
 lane. The exact excluded/scoped/extra lists are recorded in `dsh-lock.json` and
-the manifest's `dshSparkles` section. It pins the tested agent, tool, command,
-system-prompt, session-projection, client-runtime, and UI-layout peers to
-`0.1.0-rc.7`, pins `pdfjs-dist` for the CN PDF CMap runtime resolution,
-requires Node 22.19+, carries the
+the manifest's `dshSparkles` section. It declares the exact
+`@deepseek-ai/dsh@0.1.1-rc.2` host peer and pins the tested agent, tool, command,
+system-prompt, session-projection, client-runtime, and UI-layout service peers
+to `0.1.1-rc.2`. It also pins `pdfjs-dist` for the CN PDF CMap runtime resolution,
+requires Node 22.19+, and carries the
 `dsh.bundle.patch` manifest and a content lock (`dsh-lock.json` +
 `release-lock.json` + inner/outer `SHA256SUMS`), and has no lifecycle scripts
 or credential values. The install smoke installs the exact tarball into a clean
@@ -165,36 +166,37 @@ Packaging and verification never publish.
 bun run dsh:npm:release:verify
 ```
 
-That gate builds the exact 0.1.8 tarball, installs it without synthesizing a
+That gate builds the exact 0.1.9 tarball, installs it without synthesizing a
 standalone DSH host, composes it in an isolated profile using the installed
-tested `0.1.0-rc.7` runtime, runs `npm publish --dry-run`, and confirms that the
+tested `0.1.1-rc.2` runtime, runs `npm publish --dry-run`, and confirms that the
 version is unused. The reviewed artifact is:
 
 ```text
-dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.8.tgz
+dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.9.tgz
 ```
 
 After explicit publication authorization, publish that exact tarball and then
 verify it through DSH:
 
 ```sh
-npm publish ./dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.8.tgz --tag latest --access public
+npm publish ./dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.9.tgz --tag latest --access public
 bun run npm:release:latest -- dsh
-npm view @dsh-sparkles/dsh-sparkles@0.1.8 \
+npm view @dsh-sparkles/dsh-sparkles@0.1.9 \
   name version dist.integrity repository --json
 npm view @dsh-sparkles/dsh-sparkles dist-tags.latest
-dsh plugin --profile <name> add @dsh-sparkles/dsh-sparkles@0.1.8
+dsh plugin --profile <name> add @dsh-sparkles/dsh-sparkles@0.1.9
 ```
 
-For a coordinated release where both independently verified host packages use
-the root version, publish both exact tarballs and finish with:
+For this DSH-only 0.1.9 release, `npm:release:latest -- dsh` reads the version
+from `dsh/bundle.json`; the Pi package remains at 0.1.8. A future coordinated
+release may publish both exact tarballs and finish with:
 
 ```sh
 bun run npm:release:latest -- all
 ```
 
-The `all` mode preflights both exact package versions before changing either
-tag, updates the Pi and DSH tags separately, and verifies both registry values.
-A coordinated release is incomplete until this command succeeds. It is never
-called by build, package, or verification gates because those commands must not
-mutate the registry.
+The `all` mode first requires the Pi and DSH manifests to declare the same
+version, then preflights both exact package versions before changing either
+tag, updates the tags separately, and verifies both registry values. It is
+never called by build, package, or verification gates because those commands
+must not mutate the registry.

@@ -15,6 +15,7 @@ import {
   DSH_RUNTIME_PEERS,
 } from "../../scripts/dsh-bundle.js";
 import {
+  assertDshHostVersion,
   assertDshNpmPublishable,
   assembleDshNpmRelease,
   dshNpmPackagePlan,
@@ -193,6 +194,18 @@ async function buildFixture(plan) {
 }
 
 describe("dsh-sparkles npm packaging", () => {
+  test("requires the exact declared DSH host version", () => {
+    const run = () => ({ exitCode: 0, stdout: "0.1.1-rc.2\n", stderr: "" });
+    expect(
+      assertDshHostVersion("dsh", "0.1.1-rc.2", { run }),
+    ).toBe("0.1.1-rc.2");
+    expect(() =>
+      assertDshHostVersion("dsh", "0.1.1-rc.2", {
+        run: () => ({ exitCode: 0, stdout: "0.1.1-rc.1\n", stderr: "" }),
+      }),
+    ).toThrow("Installed DSH host is 0.1.1-rc.1, expected exact 0.1.1-rc.2");
+  });
+
   test("derives the T6 all-in-one bundle and preserves the maturity gate", () => {
     const manifest = readTierManifest();
     const t6 = dshNpmPackagePlan(manifest, "T6");
@@ -216,9 +229,10 @@ describe("dsh-sparkles npm packaging", () => {
     expect(t6.omittedProposals).toEqual([]);
     expect(t6.partialImplementations).toEqual([]);
     expect(t6.openBlockers).toEqual([]);
-    expect(t6.packageVersion).toBe("0.1.8");
+    expect(t6.packageVersion).toBe("0.1.9");
     expect(t6.maturity).toBe("product_useful_dsh_aggregate");
     expect(t6.dshRelease).toMatchObject({
+      version: "0.1.9",
       status: "product_useful",
       target: "T6",
     });
@@ -289,15 +303,16 @@ describe("dsh-sparkles npm packaging", () => {
     });
     expect(manifest.dependencies).toEqual({ "pdfjs-dist": "6.2.108" });
     expect(manifest.peerDependencies).toEqual({
-      "@deepseek-ai/dsh-agent": "0.1.0-rc.7",
-      "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.7",
-      "@deepseek-ai/dsh-client-ui-layout": "0.1.0-rc.7",
-      "@deepseek-ai/dsh-client-ui-tool": "0.1.0-rc.7",
-      "@deepseek-ai/dsh-commands": "0.1.0-rc.7",
-      "@deepseek-ai/dsh-session": "0.1.0-rc.7",
-      "@deepseek-ai/dsh-session-projection": "0.1.0-rc.7",
-      "@deepseek-ai/dsh-system-prompt": "0.1.0-rc.7",
-      "@deepseek-ai/dsh-tools": "0.1.0-rc.7",
+      "@deepseek-ai/dsh": "0.1.1-rc.2",
+      "@deepseek-ai/dsh-agent": "0.1.1-rc.2",
+      "@deepseek-ai/dsh-client-runtime": "0.1.1-rc.2",
+      "@deepseek-ai/dsh-client-ui-layout": "0.1.1-rc.2",
+      "@deepseek-ai/dsh-client-ui-tool": "0.1.1-rc.2",
+      "@deepseek-ai/dsh-commands": "0.1.1-rc.2",
+      "@deepseek-ai/dsh-session": "0.1.1-rc.2",
+      "@deepseek-ai/dsh-session-projection": "0.1.1-rc.2",
+      "@deepseek-ai/dsh-system-prompt": "0.1.1-rc.2",
+      "@deepseek-ai/dsh-tools": "0.1.1-rc.2",
     });
     expect(manifest.scripts).toBeUndefined();
     expect(manifest.publishConfig).toEqual({

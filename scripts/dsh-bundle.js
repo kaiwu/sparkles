@@ -51,19 +51,20 @@ const DSH_MANIFEST_PATH = join(ROOT, "dsh", "bundle.json");
 const ENTRY_DIR = join(WORK_DIR, "dsh");
 const ENTRY_PATH = join(ENTRY_DIR, "entry.mjs");
 const LOCK_SCHEMA_VERSION = 2;
-const DSH_MANIFEST_SCHEMA_VERSION = 4;
+const DSH_MANIFEST_SCHEMA_VERSION = 5;
 const PDFJS_VERSION = "6.2.108";
 const PLUGIN_SHORT_NAME = /^[a-z][a-z0-9_]*$/;
 export const DSH_RUNTIME_PEERS = {
-  "@deepseek-ai/dsh-agent": "0.1.0-rc.7",
-  "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.7",
-  "@deepseek-ai/dsh-client-ui-layout": "0.1.0-rc.7",
-  "@deepseek-ai/dsh-client-ui-tool": "0.1.0-rc.7",
-  "@deepseek-ai/dsh-commands": "0.1.0-rc.7",
-  "@deepseek-ai/dsh-session": "0.1.0-rc.7",
-  "@deepseek-ai/dsh-session-projection": "0.1.0-rc.7",
-  "@deepseek-ai/dsh-system-prompt": "0.1.0-rc.7",
-  "@deepseek-ai/dsh-tools": "0.1.0-rc.7",
+  "@deepseek-ai/dsh": "0.1.1-rc.2",
+  "@deepseek-ai/dsh-agent": "0.1.1-rc.2",
+  "@deepseek-ai/dsh-client-runtime": "0.1.1-rc.2",
+  "@deepseek-ai/dsh-client-ui-layout": "0.1.1-rc.2",
+  "@deepseek-ai/dsh-client-ui-tool": "0.1.1-rc.2",
+  "@deepseek-ai/dsh-commands": "0.1.1-rc.2",
+  "@deepseek-ai/dsh-session": "0.1.1-rc.2",
+  "@deepseek-ai/dsh-session-projection": "0.1.1-rc.2",
+  "@deepseek-ai/dsh-system-prompt": "0.1.1-rc.2",
+  "@deepseek-ai/dsh-tools": "0.1.1-rc.2",
 };
 
 /** Every file the DSH bundle emits; the npm packager consumes this inventory. */
@@ -108,14 +109,6 @@ function compiledPluginEntry(plugin) {
     plugin.name,
     `${plugin.name}.mjs`,
   );
-}
-
-function rootVersion() {
-  const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
-  if (typeof manifest.version !== "string" || manifest.version.length === 0) {
-    throw new Error("Root package.json has no version");
-  }
-  return manifest.version;
 }
 
 function dshComponentCount(plan) {
@@ -198,13 +191,15 @@ export function readDshManifest() {
   const release = manifest.dsh_release;
   if (
     !isRecord(release) ||
+    typeof release.version !== "string" ||
+    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(release.version) ||
     !["preview", "product_useful"].includes(release.status) ||
     !ALLOWED_TARGETS.has(release.target) ||
     (release.status === "preview" &&
       (typeof release.reason !== "string" || release.reason.trim() === ""))
   ) {
     throw new Error(
-      "DSH release must declare preview/product_useful status, a T5/T6 target, and a preview reason",
+      "DSH release must declare a semantic version, preview/product_useful status, a T5/T6 target, and a preview reason",
     );
   }
   return {
@@ -216,6 +211,7 @@ export function readDshManifest() {
     scopedPi: [...scoped],
     extraDsh: [...extra],
     release: {
+      version: release.version,
       status: release.status,
       target: release.target,
       reason: release.reason ?? null,
@@ -283,6 +279,7 @@ export function dshBundlePlan(
   }
   return {
     ...base,
+    packageVersion: manifest.release.version,
     plugins: included,
     pluginTiers: { ...base.pluginTiers },
     piAggregateMaturity: base.maturity,
@@ -487,7 +484,7 @@ function configurationSource(plan) {
 }
 
 function readmeSource(plan) {
-  const version = rootVersion();
+  const version = plan.packageVersion;
   return `# Sparkles for DeepSeek Harness
 
 One DeepSeek Harness ${plan.releasable ? "release" : "preview"} registering ${plan.componentCount} Sparkles
@@ -633,7 +630,7 @@ export async function buildDshBundle(
     throw new Error(`DSH bundle failed: ${result.logs.length} build errors`);
   }
 
-  const version = rootVersion();
+  const version = plan.packageVersion;
   const manifest = {
     name: PACKAGE_NAME,
     version,

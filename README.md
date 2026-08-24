@@ -45,7 +45,7 @@ provider fetch. A missing adapter is allowed and never triggers fallback.
 | Tiers | T1–T6 ProductUseful in independent Pi and DSH lanes · 0 open Pi blockers · [tiers.json](tiers.json) |
 | Inventory | 135 ledger plugins · 142 Gleam plugin packages · 77 finance libraries |
 | Tracks | closed `cn` / `hk` / `us` |
-| Tested with | Pi `0.84.1` · DSH `0.1.0-rc.7` · Gleam `1.18.0` · Bun `1.3.14` |
+| Tested with | Pi `0.84.1` · DSH `0.1.1-rc.2` · Gleam `1.18.0` · Bun `1.3.14` |
 
 The seven packages excluded from the aggregate (`hello`, `lifecycle`,
 `safety_gate`, `cn_setup`, `hk_setup`, `cn_fundamentals`, `hk_fundamentals`)

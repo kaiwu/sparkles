@@ -822,9 +822,14 @@ describe("pi-api facade", () => {
       type: "pi-sparkles/status",
       data: { key: "finance-track", text: "HK · HKD" },
     });
-    expect(projection.view(state)).toEqual({
+    expect(projection.stateSchema.parse(state)).toEqual({
+      "finance-track": "HK · HKD",
+    });
+    expect(projection.wire.viewSchema.parse(projection.wire.view(state))).toEqual({
       values: { "finance-track": "HK · HKD" },
     });
+    expect(projection.schema).toBeUndefined();
+    expect(projection.view).toBeUndefined();
     const unchanged = projection.apply(state, { type: "turn/start", data: {} });
     expect(unchanged).toBe(state);
 

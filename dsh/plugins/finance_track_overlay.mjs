@@ -8,12 +8,13 @@ import { DSH_STATUS_EVENT } from "../pi-api.mjs";
 
 export const STATUS_PROJECTION_KEY = "piSparklesStatus";
 
-const statusValues = z.record(z.string(), z.string());
+const statusState = z.record(z.string(), z.string());
+const statusView = z.object({ values: statusState });
 
 export function statusProjection() {
   return {
     key: STATUS_PROJECTION_KEY,
-    schema: z.object({ values: statusValues }),
+    stateSchema: statusState,
     init: () => ({}),
     apply(state, event) {
       if (
@@ -28,7 +29,10 @@ export function statusProjection() {
       else values[event.data.key] = event.data.text;
       return values;
     },
-    view: (state) => ({ values: state }),
+    wire: {
+      viewSchema: statusView,
+      view: (state) => ({ values: state }),
+    },
     stateVersion: 1,
   };
 }

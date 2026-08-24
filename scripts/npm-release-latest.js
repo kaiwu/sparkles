@@ -8,6 +8,20 @@ export const RELEASE_HOSTS = Object.freeze({
   dsh: "@dsh-sparkles/dsh-sparkles",
 });
 
+export function releaseVersionForLane({ lane, piVersion, dshVersion }) {
+  if (lane === "pi") return piVersion;
+  if (lane === "dsh") return dshVersion;
+  if (lane !== "all") {
+    throw new Error(`unknown release lane: ${lane}; expected pi, dsh, or all`);
+  }
+  if (piVersion !== dshVersion) {
+    throw new Error(
+      `coordinated release requires matching Pi and DSH versions, got ${piVersion} and ${dshVersion}`,
+    );
+  }
+  return piVersion;
+}
+
 function parseNpmScalar(output, label) {
   const text = output.trim();
   if (text === "") throw new Error(`${label} returned an empty response`);
@@ -115,8 +129,16 @@ if (import.meta.main) {
     const manifest = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     );
+    const dshManifest = JSON.parse(
+      readFileSync(new URL("../dsh/bundle.json", import.meta.url), "utf8"),
+    );
     const options = parseCli(process.argv.slice(2));
-    const verified = releaseLatest({ version: manifest.version, ...options });
+    const version = releaseVersionForLane({
+      lane: options.lane,
+      piVersion: manifest.version,
+      dshVersion: dshManifest.dsh_release?.version,
+    });
+    const verified = releaseLatest({ version, ...options });
     const verb = options.checkOnly ? "Verified" : "Set and verified";
     for (const result of verified) {
       console.log(`${verb} ${result.packageName}@latest -> ${result.version}`);
