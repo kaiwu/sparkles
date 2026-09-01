@@ -360,28 +360,32 @@ export default async function aggregateExtension(api) {
 }
 
 function aggregateEntrypointSource() {
-  return `import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+  return `import { createRequire } from "node:module";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 const runtimeUrl = new URL("./runtime.js", import.meta.url).href;
 const hostBridgeKey = Symbol.for("pi-sparkles:pi-tui-host:" + runtimeUrl);
 // Pi's compiled host intentionally transforms extension entrypoints through
-// Jiti. Keep the entrypoint tiny and hide this import expression from Jiti so
-// Bun evaluates the content-locked generated runtime directly.
-const nativeImport = Function("specifier", "return import(specifier)");
-let runtimePromise;
+// Jiti. Keep the entrypoint tiny and use the host runtime's native module
+// loader for the content-locked generated runtime. A Function-created dynamic
+// import cannot run inside Jiti's vm context without an import callback.
+const requireRuntime = createRequire(import.meta.url);
+let runtimeModule;
 
 function loadRuntime() {
-  if (runtimePromise === undefined) {
+  if (runtimeModule === undefined) {
     globalThis[hostBridgeKey] = Object.freeze({ truncateToWidth, visibleWidth });
-    runtimePromise = nativeImport(runtimeUrl).finally(() => {
+    try {
+      runtimeModule = requireRuntime("./runtime.js");
+    } finally {
       delete globalThis[hostBridgeKey];
-    });
+    }
   }
-  return runtimePromise;
+  return runtimeModule;
 }
 
 export default async function aggregateExtension(api) {
-  const loaded = await loadRuntime();
+  const loaded = loadRuntime();
   if (typeof loaded.default !== "function") {
     throw new Error("Pi Sparkles runtime has no aggregate extension factory");
   }

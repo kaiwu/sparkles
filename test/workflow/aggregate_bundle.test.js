@@ -215,7 +215,9 @@ describe("single-entrypoint tier aggregate", () => {
       "utf8",
     );
     expect(entrypoint.length).toBeLessThan(2_000);
-    expect(entrypoint).toContain('Function("specifier", "return import(specifier)")');
+    expect(entrypoint).toContain('createRequire(import.meta.url)');
+    expect(entrypoint).toContain('requireRuntime("./runtime.js")');
+    expect(entrypoint).not.toContain('Function("specifier", "return import(specifier)")');
     expect(entrypoint).toContain('new URL("./runtime.js", import.meta.url)');
     expect(existsSync(join(plan.outputDirectory, "runtime.js"))).toBeTrue();
     expect(existsSync(join(plan.outputDirectory, "runtime.js.map"))).toBeTrue();

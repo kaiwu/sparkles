@@ -5,6 +5,19 @@ here. Versions follow Semantic Versioning. The exact selected tier, plugin
 inventory, maturity, and content hashes remain authoritative in each tarball's
 `release-lock.json` and `aggregate-lock.json`.
 
+## 0.1.10 - 2026-09-01
+
+- Replace the `0.1.9` bootstrap's `Function`-created dynamic import with the
+  host runtime's native `createRequire` loader. Pi 0.84.4 evaluates extension
+  entrypoints inside Jiti's VM context, where the former construct fails during
+  normal interactive startup because no dynamic-import callback is installed.
+- Replace the false-positive `--list-models` release smoke with an offline,
+  sessionless Pi RPC request that actually loads and registers the complete
+  extension before exiting. Keep the same 15-second hard startup limit.
+- Retain lazy PDF.js initialization, the exact Bun-compatible canvas pin, the
+  content-locked split runtime, and the unchanged 135-plugin product inventory.
+  The independent DSH host lane is unaffected by the Pi-only bootstrap defect.
+
 ## 0.1.9 - 2026-09-01
 
 - Keep PDF.js and its native canvas polyfills out of Pi's extension-import and

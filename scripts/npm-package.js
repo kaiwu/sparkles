@@ -179,6 +179,7 @@ function runCaptured(command, args, options = {}) {
   const result = Bun.spawnSync([command, ...args], {
     cwd: options.cwd,
     env: options.env ?? process.env,
+    stdin: options.stdin ?? "ignore",
     stdout: "pipe",
     stderr: "pipe",
     timeout: options.timeout,
@@ -974,24 +975,53 @@ export function npmInstallSmoke(
     const aggregateLock = JSON.parse(
       readFileSync(join(installedPackage, "aggregate-lock.json"), "utf8"),
     );
-    requireSuccess(
+    const piStartup = requireSuccess(
       runCaptured(
         piCommand,
         [
           "--no-extensions",
           "--extension",
           entrypoint,
-          "--list-models",
+          "--mode",
+          "rpc",
+          "--no-session",
+          "--offline",
         ],
         {
           cwd: installation,
           env: withoutProviderCredentials(aggregateLock),
+          stdin: Buffer.from(
+            '{"id":"pi-sparkles-startup","type":"get_state"}\n',
+          ),
           timeout: STARTUP_SMOKE_TIMEOUT_MILLISECONDS,
           killSignal: "SIGKILL",
         },
       ),
       "plain Pi npm tarball load",
     );
+    let startupResponse;
+    for (const line of piStartup.stdout.trim().split("\n")) {
+      if (!line) continue;
+      let message;
+      try {
+        message = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (
+        message?.id === "pi-sparkles-startup" &&
+        message?.type === "response" &&
+        message?.command === "get_state"
+      ) {
+        startupResponse = message;
+        break;
+      }
+    }
+    if (startupResponse?.success !== true) {
+      throw new Error(
+        "plain Pi npm tarball load did not return a successful startup RPC response",
+      );
+    }
     console.log(
       `${summary.throughTierId} npm install smoke passed with ${piCommand}, @napi-rs/canvas ${installedRuntimeDependencies["@napi-rs/canvas"]}, and pdfjs-dist ${installedRuntimeDependencies["pdfjs-dist"]}`,
     );
