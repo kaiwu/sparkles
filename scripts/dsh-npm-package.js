@@ -39,6 +39,7 @@ import {
   DSH_OUTPUT_DIR,
   DSH_PACKAGE_NAME,
   DSH_PLUGIN_NAME,
+  DSH_RUNTIME_DEPENDENCIES,
   DSH_RUNTIME_PEERS,
   buildDshBundle,
   dshBundlePlan,
@@ -51,6 +52,7 @@ const DSH_NPM_RELEASE_SCHEMA_VERSION = 2;
 const DSH_NPM_PACKAGE_NAME = DSH_PACKAGE_NAME;
 const DSH_NPM_REGISTRY = "https://registry.npmjs.org/";
 const DSH_PEERS = DSH_RUNTIME_PEERS;
+const STARTUP_SMOKE_TIMEOUT_MILLISECONDS = 15_000;
 const DSH_NPM_PACKAGE_FILES = [
   "CHANGELOG.md",
   "CONFIGURATION.md",
@@ -104,6 +106,21 @@ function rootManifest() {
   return JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 }
 
+function runtimeDependencies() {
+  const dependencies = rootManifest().dependencies ?? {};
+  const expected = DSH_RUNTIME_DEPENDENCIES;
+  if (
+    Object.entries(expected).some(
+      ([name, version]) => dependencies[name] !== version,
+    )
+  ) {
+    throw new Error(
+      "Root package.json must pin the DSH PDF runtime dependencies",
+    );
+  }
+  return { ...expected };
+}
+
 function componentCount(plan) {
   return plan.componentCount ?? plan.plugins.length;
 }
@@ -119,6 +136,8 @@ function runCaptured(command, args, options = {}) {
     env: options.env ?? process.env,
     stdout: "pipe",
     stderr: "pipe",
+    timeout: options.timeout,
+    killSignal: options.killSignal,
   });
   return {
     exitCode: result.exitCode,
@@ -243,10 +262,6 @@ Version ${version} · ${plan.throughTierId} · ${componentCount(plan)} plugin co
 }
 
 function dshNpmManifest(plan) {
-  const pdfVersion = rootManifest().dependencies?.["pdfjs-dist"];
-  if (typeof pdfVersion !== "string" || pdfVersion.length === 0) {
-    throw new Error("Root package.json must pin pdfjs-dist for npm packaging");
-  }
   return {
     name: DSH_NPM_PACKAGE_NAME,
     version: plan.packageVersion,
@@ -278,7 +293,7 @@ function dshNpmManifest(plan) {
       "all-in-one",
     ],
     engines: { node: ">=22.19.0" },
-    dependencies: { "pdfjs-dist": pdfVersion },
+    dependencies: runtimeDependencies(),
     peerDependencies: DSH_PEERS,
     dsh: {
       bundle: { patch: "./cordis.patch.yml" },
@@ -346,7 +361,7 @@ function dshReleaseLock(plan, packageDirectory) {
     npmFiles: [...DSH_NPM_PACKAGE_FILES, "package.json"].sort((a, b) =>
       a.localeCompare(b),
     ),
-    runtimeDependencies: { "pdfjs-dist": rootManifest().dependencies["pdfjs-dist"] },
+    runtimeDependencies: runtimeDependencies(),
     runtimePeerDependencies: DSH_PEERS,
     credentialValuesIncluded: false,
     lifecycleScriptsIncluded: false,
@@ -430,7 +445,7 @@ export function dshNpmPackagePlan(
 
 export function verifyDshNpmPackageDirectory(directory, expectedPlan) {
   const root = resolve(directory);
-  const expectedPdfVersion = rootManifest().dependencies?.["pdfjs-dist"];
+  const expectedRuntimeDependencies = runtimeDependencies();
   const expectedFiles = [...DSH_NPM_PACKAGE_FILES, "package.json"].sort((a, b) =>
     a.localeCompare(b),
   );
@@ -463,7 +478,8 @@ export function verifyDshNpmPackageDirectory(directory, expectedPlan) {
     JSON.stringify(manifest.files) !== JSON.stringify(DSH_NPM_PACKAGE_FILES) ||
     manifest.license !== "Apache-2.0" ||
     manifest.engines?.node !== ">=22.19.0" ||
-    manifest.dependencies?.["pdfjs-dist"] !== expectedPdfVersion ||
+    JSON.stringify(manifest.dependencies) !==
+      JSON.stringify(expectedRuntimeDependencies) ||
     JSON.stringify(manifest.peerDependencies) !== JSON.stringify(DSH_PEERS) ||
     lock.maturity !== manifest.dshSparkles?.maturity ||
     lock.piAggregateMaturity !== manifest.dshSparkles?.piAggregateMaturity ||
@@ -499,7 +515,8 @@ export function verifyDshNpmPackageDirectory(directory, expectedPlan) {
     lock.sourceBundle.bundleSha256 !== sha256File(join(root, "index.js")) ||
     lock.sourceBundle.dshLockSha256 !== sha256File(join(root, "dsh-lock.json")) ||
     JSON.stringify(lock.npmFiles) !== JSON.stringify(expectedFiles) ||
-    lock.runtimeDependencies?.["pdfjs-dist"] !== expectedPdfVersion ||
+    JSON.stringify(lock.runtimeDependencies) !==
+      JSON.stringify(expectedRuntimeDependencies) ||
     JSON.stringify(lock.runtimePeerDependencies) !== JSON.stringify(DSH_PEERS)
   ) {
     throw new Error("DSH npm package differs from its source bundle lock");
@@ -897,17 +914,21 @@ export function dshNpmInstallSmoke(
       DSH_NPM_PACKAGE_NAME,
     );
     verifyDshNpmPackageDirectory(installedPackage, expectedPlan);
-    const pdfVersion = rootManifest().dependencies["pdfjs-dist"];
-    const installedPdfManifest = JSON.parse(
-      readFileSync(
-        join(installation, "node_modules", "pdfjs-dist", "package.json"),
-        "utf8",
-      ),
-    );
-    if (installedPdfManifest.version !== pdfVersion) {
-      throw new Error(
-        `Clean npm installation resolved pdfjs-dist ${installedPdfManifest.version}, expected ${pdfVersion}`,
+    const installedRuntimeDependencies = runtimeDependencies();
+    for (const [name, expectedVersion] of Object.entries(
+      installedRuntimeDependencies,
+    )) {
+      const installedManifest = JSON.parse(
+        readFileSync(
+          join(installation, "node_modules", name, "package.json"),
+          "utf8",
+        ),
       );
+      if (installedManifest.version !== expectedVersion) {
+        throw new Error(
+          `Clean npm installation resolved ${name} ${installedManifest.version}, expected ${expectedVersion}`,
+        );
+      }
     }
 
     const entrypoint = join(installedPackage, "index.js");
@@ -922,14 +943,21 @@ export function dshNpmInstallSmoke(
           "--input-type=module",
           "--eval",
           `import { pathToFileURL } from "node:url";
+delete globalThis.DOMMatrix;
+delete globalThis.Path2D;
 const loaded = await import(pathToFileURL(process.argv[1]).href);
 const plugin = loaded.default;
 if (typeof plugin?.apply !== "function") throw new Error("entrypoint has no apply");
 if (plugin.name !== "dsh-sparkles") throw new Error("unexpected plugin name: " + plugin.name);
-if (JSON.stringify(plugin.inject) !== JSON.stringify(["tools", "commands", "agents", "systemPrompt"])) throw new Error("unexpected inject: " + JSON.stringify(plugin.inject));`,
+if (JSON.stringify(plugin.inject) !== JSON.stringify(["tools", "commands", "agents", "systemPrompt"])) throw new Error("unexpected inject: " + JSON.stringify(plugin.inject));
+if (globalThis.DOMMatrix !== undefined || globalThis.Path2D !== undefined) throw new Error("DSH entrypoint eagerly initialized PDF canvas globals");`,
           entrypoint,
         ],
-        { cwd: installation },
+        {
+          cwd: installation,
+          timeout: STARTUP_SMOKE_TIMEOUT_MILLISECONDS,
+          killSignal: "SIGKILL",
+        },
       ),
       "installed DSH entrypoint import",
     );
@@ -973,7 +1001,7 @@ if (JSON.stringify(plugin.inject) !== JSON.stringify(["tools", "commands", "agen
       rmSync(dshHome, { recursive: true, force: true });
     }
     console.log(
-      `${summary.throughTierId} dsh-sparkles npm install smoke passed with DSH ${dshVersion} and pdfjs-dist ${pdfVersion}`,
+      `${summary.throughTierId} dsh-sparkles npm install smoke passed with DSH ${dshVersion}, @napi-rs/canvas ${installedRuntimeDependencies["@napi-rs/canvas"]}, and pdfjs-dist ${installedRuntimeDependencies["pdfjs-dist"]}`,
     );
     return summary;
   } finally {

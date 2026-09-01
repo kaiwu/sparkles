@@ -1,6 +1,6 @@
 {
   "name": "pi-sparkles",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -57,6 +57,7 @@
     "clean": "bun scripts/clean.js"
   },
   "dependencies": {
+    "@napi-rs/canvas": "1.0.3",
     "pdfjs-dist": "6.2.108"
   },
   "description": "Shared Gleam finance tools with host-native npm distributions for Pi and DeepSeek Harness.",

@@ -52,8 +52,11 @@ const ENTRY_DIR = join(WORK_DIR, "dsh");
 const ENTRY_PATH = join(ENTRY_DIR, "entry.mjs");
 const LOCK_SCHEMA_VERSION = 2;
 const DSH_MANIFEST_SCHEMA_VERSION = 5;
-const PDFJS_VERSION = "6.2.108";
 const PLUGIN_SHORT_NAME = /^[a-z][a-z0-9_]*$/;
+export const DSH_RUNTIME_DEPENDENCIES = {
+  "@napi-rs/canvas": "1.0.3",
+  "pdfjs-dist": "6.2.108",
+};
 export const DSH_RUNTIME_PEERS = {
   "@deepseek-ai/dsh": "0.1.1-rc.2",
   "@deepseek-ai/dsh-agent": "0.1.1-rc.2",
@@ -654,7 +657,7 @@ export async function buildDshBundle(
       "dsh-lock.json",
       "SHA256SUMS",
     ],
-    dependencies: { "pdfjs-dist": PDFJS_VERSION },
+    dependencies: DSH_RUNTIME_DEPENDENCIES,
     peerDependencies: DSH_RUNTIME_PEERS,
     engines: { node: ">=22.19.0" },
     dsh: {
@@ -765,6 +768,8 @@ export function verifyDshBundle(directory, plan) {
     manifest.exports?.["./client"] !== "./client.js" ||
     manifest.private !== !plan.releasable ||
     manifest.engines?.node !== ">=22.19.0" ||
+    JSON.stringify(manifest.dependencies) !==
+      JSON.stringify(DSH_RUNTIME_DEPENDENCIES) ||
     JSON.stringify(manifest.peerDependencies) !==
       JSON.stringify(DSH_RUNTIME_PEERS)
   ) {

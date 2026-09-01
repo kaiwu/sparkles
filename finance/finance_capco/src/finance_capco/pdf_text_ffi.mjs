@@ -1,14 +1,13 @@
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { getDocument, version } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 const parserName = "pdfjs-dist";
-const cMapUrl = fileURLToPath(
-  new URL(
-    ".",
-    import.meta.resolve("pdfjs-dist/cmaps/UniGB-UCS2-H.bcmap"),
-  ),
-);
+let pdfJsPromise;
+
+function loadPdfJs() {
+  pdfJsPromise ??= import("pdfjs-dist/legacy/build/pdf.mjs");
+  return pdfJsPromise;
+}
 
 export async function extract_pdf(
   bodyBase64,
@@ -66,6 +65,16 @@ export async function extract_pdf(
   }, timeoutMilliseconds);
 
   try {
+    const { getDocument, version } = await loadPdfJs();
+    if (stopKind !== null || cancellation.signal.aborted) {
+      return { ok: false, kind: stopKind ?? "cancelled" };
+    }
+    const cMapUrl = fileURLToPath(
+      new URL(
+        ".",
+        import.meta.resolve("pdfjs-dist/cmaps/UniGB-UCS2-H.bcmap"),
+      ),
+    );
     loadingTask = getDocument({
       data: Uint8Array.from(bytes),
       cMapUrl,
@@ -165,4 +174,3 @@ export async function extract_pdf(
     }
   }
 }
-

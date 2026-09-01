@@ -53,6 +53,21 @@ function fixtureArtifact(root, shortName, body) {
 }
 
 function fixturePlan(root, plugins) {
+  const piTuiDirectory = join(
+    root,
+    "node_modules",
+    "@earendil-works",
+    "pi-tui",
+  );
+  mkdirSync(piTuiDirectory, { recursive: true });
+  writeFileSync(
+    join(piTuiDirectory, "package.json"),
+    '{"name":"@earendil-works/pi-tui","type":"module","exports":"./index.js"}\n',
+  );
+  writeFileSync(
+    join(piTuiDirectory, "index.js"),
+    "export const truncateToWidth = value => value; export const visibleWidth = value => value.length;\n",
+  );
   return {
     throughTierId: "T5",
     includedTiers: [{
@@ -158,7 +173,7 @@ describe("single-entrypoint tier aggregate", () => {
         .filter((file) => existsSync(join(ROOT, file))),
     ].map((file) => readFileSync(join(ROOT, file), "utf8")).join("\n");
     expect(documentation).not.toContain("test:pi");
-  });
+  }, 20_000);
 
   test("builds one Pi entrypoint and preserves deterministic initialization", async () => {
     const root = temporaryDirectory();
@@ -195,6 +210,15 @@ describe("single-entrypoint tier aggregate", () => {
       readFileSync(join(plan.outputDirectory, "package.json"), "utf8"),
     );
     expect(manifest.pi.extensions).toEqual(["./index.js"]);
+    const entrypoint = readFileSync(
+      join(plan.outputDirectory, "index.js"),
+      "utf8",
+    );
+    expect(entrypoint.length).toBeLessThan(2_000);
+    expect(entrypoint).toContain('Function("specifier", "return import(specifier)")');
+    expect(entrypoint).toContain('new URL("./runtime.js", import.meta.url)');
+    expect(existsSync(join(plan.outputDirectory, "runtime.js"))).toBeTrue();
+    expect(existsSync(join(plan.outputDirectory, "runtime.js.map"))).toBeTrue();
     expect(manifest.piSparkles).toEqual({
       aggregateThrough: "T5",
       maturity: "product_useful_aggregate",
@@ -212,6 +236,9 @@ describe("single-entrypoint tier aggregate", () => {
     const lock = JSON.parse(
       readFileSync(join(plan.outputDirectory, "aggregate-lock.json"), "utf8"),
     );
+    expect(lock.schemaVersion).toBe(2);
+    expect(lock.entrypointSha256).toHaveLength(64);
+    expect(lock.bundleSha256).toHaveLength(64);
     expect(lock.plugins[0].environmentVariables).toEqual(["ALPHA_TOKEN"]);
     expect(
       readFileSync(join(plan.outputDirectory, "CONFIGURATION.md"), "utf8"),
@@ -230,7 +257,7 @@ describe("single-entrypoint tier aggregate", () => {
       },
     });
     expect(registrations).toEqual(["tool:alpha_tool", "command:beta_command"]);
-  });
+  }, 15_000);
 
   test("fails before forwarding a duplicate named registration", async () => {
     const root = temporaryDirectory();

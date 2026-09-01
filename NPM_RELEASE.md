@@ -52,27 +52,35 @@ release verification load the T6 all-in-one aggregate entrypoint once so all
 The loader rejects earlier-tier and per-plugin target overrides.
 
 The T5 selection remains the historical 0.1.4 boundary. T6 is ProductUseful
-with zero omissions, partials, or blockers and is selected for version 0.1.8.
+with zero omissions, partials, or blockers and is selected for version 0.1.9.
 
 ## Local consumer verification
 
 The `--install-smoke` gate installs the exact tarball into a clean temporary npm
-prefix with lifecycle scripts disabled, verifies the installed package and exact
-`pdfjs-dist` version, imports its default extension, removes every declared
+prefix with lifecycle scripts disabled, verifies the installed package and the
+exact `pdfjs-dist`/`@napi-rs/canvas` versions, imports its default extension
+without permitting eager PDF canvas initialization, removes every declared
 provider variable from the child environment, and asks plain Pi to load the
-entrypoint with `--list-models`. For a manual equivalent:
+entrypoint with `--list-models`. Both startup processes have a 15-second hard
+limit. For a manual equivalent:
 
 ```sh
-npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.8.tgz
+npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.9.tgz
 pi --no-extensions \
   --extension ./node_modules/@pi-sparkles/pi-sparkles/index.js \
   --list-models
 ```
 
 The package pins `pdfjs-dist` because the CN PDF path resolves its CMap assets
-at runtime. Pi host code is not bundled and is declared with the Pi-required
-`"*"` peer ranges. There are no npm lifecycle scripts, and packaging never
-reads credential values.
+at runtime, and pins `@napi-rs/canvas@1.0.3` because Pi runs on Bun and later
+floating native canvas builds can block extension import. Neither dependency is
+initialized until a PDF operation invokes the parser. Pi host code is not
+bundled and is declared with the Pi-required `"*"` peer ranges. The manifest
+still exposes exactly one small Pi entrypoint; it passes Pi's host-owned TUI
+helpers to the separately checksummed `runtime.js`, which is loaded with Bun's
+native module loader so Pi's Jiti compatibility loader never transpiles the
+full generated aggregate. There are no npm lifecycle scripts, and packaging
+never reads credential values.
 
 Futu OpenD, Alpaca, IBKR, their SDKs or gateways, credentials, entitlements,
 login state, and live certification are external caller-owned dependencies.
@@ -97,7 +105,7 @@ because a trusted-publisher relationship cannot be attached until the package
 exists. The explicit command is:
 
 ```sh
-npm publish ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.8.tgz --tag latest --access public
+npm publish ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.9.tgz --tag latest --access public
 bun run npm:release:latest -- pi
 ```
 
@@ -112,10 +120,10 @@ a protected GitHub `npm` environment if review approval is required.
 After publication, verify the registry artifact and install through Pi:
 
 ```sh
-npm view @pi-sparkles/pi-sparkles@0.1.8 \
+npm view @pi-sparkles/pi-sparkles@0.1.9 \
   name version dist.integrity repository --json
 npm view @pi-sparkles/pi-sparkles dist-tags.latest
-pi install npm:@pi-sparkles/pi-sparkles@0.1.8
+pi install npm:@pi-sparkles/pi-sparkles@0.1.9
 ```
 
 `npm:release:latest` is an authenticated, registry-mutating command. It first
@@ -148,8 +156,9 @@ lane. The exact excluded/scoped/extra lists are recorded in `dsh-lock.json` and
 the manifest's `dshSparkles` section. It declares the exact
 `@deepseek-ai/dsh@0.1.1-rc.2` host peer and pins the tested agent, tool, command,
 system-prompt, session-projection, client-runtime, and UI-layout service peers
-to `0.1.1-rc.2`. It also pins `pdfjs-dist` for the CN PDF CMap runtime resolution,
-requires Node 22.19+, and carries the
+to `0.1.1-rc.2`. It also pins `pdfjs-dist` and the shared
+`@napi-rs/canvas@1.0.3` runtime without initializing either during entrypoint
+registration, requires Node 22.19+, and carries the
 `dsh.bundle.patch` manifest and a content lock (`dsh-lock.json` +
 `release-lock.json` + inner/outer `SHA256SUMS`), and has no lifecycle scripts
 or credential values. The install smoke installs the exact tarball into a clean
@@ -166,33 +175,34 @@ Packaging and verification never publish.
 bun run dsh:npm:release:verify
 ```
 
-That gate builds the exact 0.1.9 tarball, installs it without synthesizing a
+That gate builds the exact 0.1.10 tarball, installs it without synthesizing a
 standalone DSH host, composes it in an isolated profile using the installed
 tested `0.1.1-rc.2` runtime, runs `npm publish --dry-run`, and confirms that the
 version is unused. The reviewed artifact is:
 
 ```text
-dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.9.tgz
+dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.10.tgz
 ```
 
 After explicit publication authorization, publish that exact tarball and then
 verify it through DSH:
 
 ```sh
-npm publish ./dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.9.tgz --tag latest --access public
+npm publish ./dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.10.tgz --tag latest --access public
 bun run npm:release:latest -- dsh
-npm view @dsh-sparkles/dsh-sparkles@0.1.9 \
+npm view @dsh-sparkles/dsh-sparkles@0.1.10 \
   name version dist.integrity repository --json
 npm view @dsh-sparkles/dsh-sparkles dist-tags.latest
-dsh plugin --profile <name> add @dsh-sparkles/dsh-sparkles@0.1.9
+dsh plugin --profile <name> add @dsh-sparkles/dsh-sparkles@0.1.10
 ```
 
-For this DSH-only 0.1.9 release, `npm:release:latest -- dsh` reads the version
-from `dsh/bundle.json`; the Pi package remains at 0.1.8. A future coordinated
-release may publish both exact tarballs and finish with:
+The Pi `0.1.9` and DSH `0.1.10` maintenance releases remain independent. Move
+each package's `latest` tag only after its own exact tarball has been explicitly
+published:
 
 ```sh
-bun run npm:release:latest -- all
+bun run npm:release:latest -- pi
+bun run npm:release:latest -- dsh
 ```
 
 The `all` mode first requires the Pi and DSH manifests to declare the same

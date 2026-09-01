@@ -36,7 +36,8 @@ import {
   validateTierManifest,
 } from "./tiers.js";
 
-const BUNDLE_SCHEMA_VERSION = 1;
+const BUNDLE_SCHEMA_VERSION = 2;
+const PREVIOUS_BUNDLE_SCHEMA_VERSION = 1;
 const PRODUCT_TIER_IDS = ["T1", "T2", "T3", "T4", "T5"];
 const ALLOWED_TARGETS = new Set(["T5", "T6"]);
 export const DEFAULT_AGGREGATE_TARGET = "T6";
@@ -111,7 +112,9 @@ function assertReplaceableOutput(output, plan) {
     throw new Error(`Refusing to replace an invalid aggregate output: ${output}`);
   }
   if (
-    lock.schemaVersion !== BUNDLE_SCHEMA_VERSION ||
+    ![PREVIOUS_BUNDLE_SCHEMA_VERSION, BUNDLE_SCHEMA_VERSION].includes(
+      lock.schemaVersion,
+    ) ||
     lock.package?.name !== plan.packageName ||
     lock.throughTierId !== plan.throughTierId
   ) {
@@ -287,7 +290,7 @@ export function aggregateBundlePlan(
   };
 }
 
-function aggregateEntrySource(plan, artifactRoot, adapterPath) {
+function aggregateRuntimeSource(plan, artifactRoot, adapterPath) {
   const imports = plan.plugins.map((plugin, index) =>
     `import extension${index} from ${JSON.stringify(
       moduleSpecifier(
@@ -354,6 +357,61 @@ export default async function aggregateExtension(api) {
   }
 }
 `;
+}
+
+function aggregateEntrypointSource() {
+  return `import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+
+const runtimeUrl = new URL("./runtime.js", import.meta.url).href;
+const hostBridgeKey = Symbol.for("pi-sparkles:pi-tui-host:" + runtimeUrl);
+// Pi's compiled host intentionally transforms extension entrypoints through
+// Jiti. Keep the entrypoint tiny and hide this import expression from Jiti so
+// Bun evaluates the content-locked generated runtime directly.
+const nativeImport = Function("specifier", "return import(specifier)");
+let runtimePromise;
+
+function loadRuntime() {
+  if (runtimePromise === undefined) {
+    globalThis[hostBridgeKey] = Object.freeze({ truncateToWidth, visibleWidth });
+    runtimePromise = nativeImport(runtimeUrl).finally(() => {
+      delete globalThis[hostBridgeKey];
+    });
+  }
+  return runtimePromise;
+}
+
+export default async function aggregateExtension(api) {
+  const loaded = await loadRuntime();
+  if (typeof loaded.default !== "function") {
+    throw new Error("Pi Sparkles runtime has no aggregate extension factory");
+  }
+  return loaded.default(api);
+}
+`;
+}
+
+function piTuiHostBridgePlugin() {
+  return {
+    name: "pi-sparkles-pi-tui-host-bridge",
+    setup(build) {
+      build.onResolve(
+        { filter: /^@earendil-works\/pi-tui$/ },
+        () => ({ path: "pi-tui-host", namespace: "pi-sparkles-host" }),
+      );
+      build.onLoad(
+        { filter: /.*/, namespace: "pi-sparkles-host" },
+        () => ({
+          loader: "js",
+          contents: `const key = Symbol.for("pi-sparkles:pi-tui-host:" + import.meta.url);
+const host = globalThis[key];
+if (host === undefined) throw new Error("Pi Sparkles runtime has no Pi TUI host bridge");
+export const truncateToWidth = host.truncateToWidth;
+export const visibleWidth = host.visibleWidth;
+`,
+        }),
+      );
+    },
+  };
 }
 
 function writeJson(path, value) {
@@ -482,7 +540,7 @@ function packageManifest(plan) {
   };
 }
 
-function lockRecord(plan, pluginRecords, bundlePath) {
+function lockRecord(plan, pluginRecords, entrypointPath, bundlePath) {
   const partialNames = new Set(
     plan.partialImplementations.map(({ proposal }) => proposal),
   );
@@ -511,6 +569,7 @@ function lockRecord(plan, pluginRecords, bundlePath) {
     collisionPolicy:
       "fail_before_duplicate_named_registration_is_forwarded_to_pi",
     credentialsIncluded: false,
+    entrypointSha256: sha256File(entrypointPath),
     bundleSha256: sha256File(bundlePath),
   };
 }
@@ -520,7 +579,8 @@ export function verifyAggregateBundle(directory, expectedPlan) {
   const required = [
     "package.json",
     "index.js",
-    "index.js.map",
+    "runtime.js",
+    "runtime.js.map",
     "build.json",
     "metafile.json",
     "aggregate-lock.json",
@@ -560,7 +620,8 @@ export function verifyAggregateBundle(directory, expectedPlan) {
     lock.singleEntrypoint !== true ||
     lock.credentialsIncluded !== false ||
     lock.pluginCount !== lock.plugins?.length ||
-    lock.bundleSha256 !== sha256File(join(root, "index.js"))
+    lock.entrypointSha256 !== sha256File(join(root, "index.js")) ||
+    lock.bundleSha256 !== sha256File(join(root, "runtime.js"))
   ) {
     throw new Error("Aggregate package manifest or lock is inconsistent");
   }
@@ -654,23 +715,47 @@ export async function assembleAggregateBundle(
   mkdirSync(dirname(adapter), { recursive: true });
   let movedPrevious = false;
   try {
-    writeFileSync(adapter, aggregateEntrySource(plan, artifactRoot, adapter));
+    writeFileSync(adapter, aggregateRuntimeSource(plan, artifactRoot, adapter));
     const result = await Bun.build({
       entrypoints: [adapter],
       outdir: staging,
-      naming: "index.js",
+      naming: "runtime.js",
       format: "esm",
       target: "node",
       minify: false,
       sourcemap: "external",
       metafile: true,
-      external: HOST_EXTERNALS,
+      external: HOST_EXTERNALS.filter(
+        (specifier) => specifier !== "@earendil-works/pi-tui",
+      ),
+      plugins: [piTuiHostBridgePlugin()],
     });
     if (!result.success) {
       const details = result.logs.map((log) => String(log)).join("\n");
       throw new Error(`Aggregate Bun build failed${details ? `:\n${details}` : ""}`);
     }
-    const bundlePath = join(staging, "index.js");
+    const unsupportedRuntimeExternals = new Set();
+    for (const input of Object.values(result.metafile.inputs)) {
+      for (const imported of input.imports ?? []) {
+        if (
+          imported.external &&
+          !imported.path.startsWith("node:") &&
+          imported.path !== "pdfjs-dist/legacy/build/pdf.mjs"
+        ) {
+          unsupportedRuntimeExternals.add(imported.path);
+        }
+      }
+    }
+    if (unsupportedRuntimeExternals.size > 0) {
+      throw new Error(
+        `Native aggregate runtime has unbridged external imports: ${[
+          ...unsupportedRuntimeExternals,
+        ].sort().join(", ")}`,
+      );
+    }
+    const entrypointPath = join(staging, "index.js");
+    const bundlePath = join(staging, "runtime.js");
+    writeFileSync(entrypointPath, aggregateEntrypointSource());
     const pluginRecords = plan.plugins.map((plugin) =>
       pluginRecord(plan, plugin, artifactRoot),
     );
@@ -690,7 +775,7 @@ export async function assembleAggregateBundle(
     );
     writeJson(
       join(staging, "aggregate-lock.json"),
-      lockRecord(plan, pluginRecords, bundlePath),
+      lockRecord(plan, pluginRecords, entrypointPath, bundlePath),
     );
     writeChecksums(staging);
     verifyAggregateBundle(staging, plan);

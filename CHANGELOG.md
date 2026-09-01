@@ -5,6 +5,22 @@ here. Versions follow Semantic Versioning. The exact selected tier, plugin
 inventory, maturity, and content hashes remain authoritative in each tarball's
 `release-lock.json` and `aggregate-lock.json`.
 
+## 0.1.9 - 2026-09-01
+
+- Keep PDF.js and its native canvas polyfills out of Pi's extension-import and
+  registration path. The parser now loads only when a PDF operation has passed
+  its input boundary and actually needs it.
+- Replace the monolithic Jiti-facing aggregate with a tiny single entrypoint
+  that receives Pi's host-owned TUI helpers and natively imports the separately
+  content-locked runtime. Plain Pi 0.84.4 no longer transpiles roughly 694,000
+  generated lines before it can register Sparkles.
+- Pin `@napi-rs/canvas` to the Bun-compatible `1.0.3` runtime instead of
+  accepting PDF.js's floating optional range, which can resolve to a native
+  binding that hangs the Bun-compiled Pi host during startup.
+- Bound clean-package entrypoint and plain-Pi startup smokes to 15 seconds, and
+  fail verification if either host entrypoint eagerly creates PDF canvas
+  globals.
+
 ## 0.1.8 - 2026-08-19
 
 - Add credential-free official SSE acquisition for the exact reviewed STAR 50

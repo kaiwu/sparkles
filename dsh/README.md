@@ -101,7 +101,9 @@ verify the shared prompt and track projection, and prove that a watchlist
 mutation cannot leak to the second agent.
 
 The generated package declares the exact `@deepseek-ai/dsh@0.1.1-rc.2` host
-peer, pins its tested DSH service peers to the same version, pins `pdfjs-dist`,
-requires Node 22.19+, carries exact locks/checksums, and contains no lifecycle
-scripts or credential values. The release install gate requires that exact
-host version.
+peer, pins its tested DSH service peers to the same version, and pins
+`pdfjs-dist` plus its Bun-compatible `@napi-rs/canvas` polyfill. PDF runtime
+state is initialized only by a PDF operation, never while the DSH entrypoint
+registers. The package requires Node 22.19+, carries exact locks/checksums, and
+contains no lifecycle scripts or credential values. The release install gate
+requires that exact host version.

@@ -5,6 +5,14 @@ follow Semantic Versioning. The exact tier, plugin inventory, maturity, and
 content hashes remain authoritative in each tarball's `dsh-lock.json` and
 `release-lock.json`.
 
+## 0.1.10 - 2026-09-01
+
+- Consume the shared lazy PDF effect boundary so the DSH server entrypoint also
+  registers without initializing PDF.js or native canvas state.
+- Pin the exact Bun-compatible `@napi-rs/canvas@1.0.3` runtime used by the
+  shared PDF path, and make package verification reject eager canvas globals
+  or an entrypoint import that exceeds 15 seconds.
+
 ## 0.1.9 - 2026-08-24
 
 - Restore the finance-track `shell.overlay` indicator on DSH 0.1.1-rc.2 by

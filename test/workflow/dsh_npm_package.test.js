@@ -12,6 +12,7 @@ import { join } from "node:path";
 import {
   DSH_OUTPUT_DIR,
   DSH_PACKAGE_NAME,
+  DSH_RUNTIME_DEPENDENCIES,
   DSH_RUNTIME_PEERS,
 } from "../../scripts/dsh-bundle.js";
 import {
@@ -115,6 +116,7 @@ function writeFixtureBundle(plan) {
         exports: { ".": "./index.js", "./client": "./client.js" },
         private: !plan.releasable,
         engines: { node: ">=22.19.0" },
+        dependencies: DSH_RUNTIME_DEPENDENCIES,
         peerDependencies: DSH_RUNTIME_PEERS,
         dsh: {
           bundle: { patch: "./cordis.patch.yml" },
@@ -229,10 +231,10 @@ describe("dsh-sparkles npm packaging", () => {
     expect(t6.omittedProposals).toEqual([]);
     expect(t6.partialImplementations).toEqual([]);
     expect(t6.openBlockers).toEqual([]);
-    expect(t6.packageVersion).toBe("0.1.9");
+    expect(t6.packageVersion).toBe("0.1.10");
     expect(t6.maturity).toBe("product_useful_dsh_aggregate");
     expect(t6.dshRelease).toMatchObject({
-      version: "0.1.9",
+      version: "0.1.10",
       status: "product_useful",
       target: "T6",
     });
@@ -301,7 +303,10 @@ describe("dsh-sparkles npm packaging", () => {
       publishable: true,
       brokerOrderMutation: false,
     });
-    expect(manifest.dependencies).toEqual({ "pdfjs-dist": "6.2.108" });
+    expect(manifest.dependencies).toEqual({
+      "@napi-rs/canvas": "1.0.3",
+      "pdfjs-dist": "6.2.108",
+    });
     expect(manifest.peerDependencies).toEqual({
       "@deepseek-ai/dsh": "0.1.1-rc.2",
       "@deepseek-ai/dsh-agent": "0.1.1-rc.2",

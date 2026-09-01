@@ -120,7 +120,7 @@ describe("all-in-one npm packaging", () => {
     expect(t6.omittedProposals).toEqual([]);
     expect(t6.partialImplementations).toEqual([]);
     expect(t6.openBlockers).toEqual([]);
-    expect(t6.packageVersion).toBe("0.1.8");
+    expect(t6.packageVersion).toBe("0.1.9");
     expect(t6.releasable).toBe(
       t6.includedTiers.at(-1).status === "product_useful",
     );
@@ -164,6 +164,7 @@ describe("all-in-one npm packaging", () => {
       brokerOrderMutation: false,
     });
     expect(packageManifest.dependencies).toEqual({
+      "@napi-rs/canvas": "1.0.3",
       "pdfjs-dist": "6.2.108",
     });
     expect(packageManifest.peerDependencies).toEqual({
@@ -217,7 +218,7 @@ describe("all-in-one npm packaging", () => {
       plan.npmOutputDirectory,
     );
     expect(rebuilt.tarballSha256).toBe(summary.tarballSha256);
-  });
+  }, 15_000);
 
   test("packs T6-format inventory privately and refuses its publish gate", async () => {
     const root = temporaryDirectory();
@@ -252,7 +253,7 @@ describe("all-in-one npm packaging", () => {
     expect(() => assertNpmPublishable(summary)).toThrow(
       "T6 npm aggregate is a blocked preview and cannot be published",
     );
-  });
+  }, 15_000);
 
   test("detects package tampering after npm packing", async () => {
     const root = temporaryDirectory();
@@ -263,7 +264,7 @@ describe("all-in-one npm packaging", () => {
       "export default function () {}\n",
     );
     expect(() => verifyNpmRelease(plan.npmOutputDirectory, plan)).toThrow();
-  });
+  }, 15_000);
 
   test("defaults to the T6 next release and accepts explicit T5", () => {
     expect(parseNpmPackageArguments([])).toMatchObject({

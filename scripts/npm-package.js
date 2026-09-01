@@ -37,9 +37,11 @@ import {
 } from "./modules.js";
 import { readTierManifest } from "./tiers.js";
 
-const NPM_RELEASE_SCHEMA_VERSION = 1;
+const NPM_RELEASE_SCHEMA_VERSION = 2;
+const PREVIOUS_NPM_RELEASE_SCHEMA_VERSION = 1;
 const NPM_PACKAGE_NAME = "@pi-sparkles/pi-sparkles";
 const NPM_REGISTRY = "https://registry.npmjs.org/";
+const STARTUP_SMOKE_TIMEOUT_MILLISECONDS = 15_000;
 const NPM_PACKAGE_FILES = [
   "CHANGELOG.md",
   "CONFIGURATION.md",
@@ -51,17 +53,19 @@ const NPM_PACKAGE_FILES = [
   "aggregate-lock.json",
   "build.json",
   "index.js",
-  "index.js.map",
   "metafile.json",
   "release-lock.json",
+  "runtime.js",
+  "runtime.js.map",
 ];
 const AGGREGATE_COPY_FILES = [
   "CONFIGURATION.md",
   "aggregate-lock.json",
   "build.json",
   "index.js",
-  "index.js.map",
   "metafile.json",
+  "runtime.js",
+  "runtime.js.map",
 ];
 const ROOT_COPY_FILES = [
   "CHANGELOG.md",
@@ -90,6 +94,26 @@ function writeJson(path, value) {
 
 function rootManifest() {
   return JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+}
+
+function runtimeDependencies() {
+  const dependencies = rootManifest().dependencies ?? {};
+  const canvasVersion = dependencies["@napi-rs/canvas"];
+  const pdfVersion = dependencies["pdfjs-dist"];
+  if (
+    typeof canvasVersion !== "string" ||
+    canvasVersion.length === 0 ||
+    typeof pdfVersion !== "string" ||
+    pdfVersion.length === 0
+  ) {
+    throw new Error(
+      "Root package.json must pin @napi-rs/canvas and pdfjs-dist for npm packaging",
+    );
+  }
+  return {
+    "@napi-rs/canvas": canvasVersion,
+    "pdfjs-dist": pdfVersion,
+  };
 }
 
 function isInside(parent, candidate) {
@@ -140,7 +164,10 @@ function assertReplaceableOutput(output, plan) {
     throw new Error(`Refusing to replace an invalid npm output: ${output}`);
   }
   if (
-    summary.schemaVersion !== NPM_RELEASE_SCHEMA_VERSION ||
+    ![
+      PREVIOUS_NPM_RELEASE_SCHEMA_VERSION,
+      NPM_RELEASE_SCHEMA_VERSION,
+    ].includes(summary.schemaVersion) ||
     summary.package?.name !== NPM_PACKAGE_NAME ||
     summary.throughTierId !== plan.throughTierId
   ) {
@@ -154,6 +181,8 @@ function runCaptured(command, args, options = {}) {
     env: options.env ?? process.env,
     stdout: "pipe",
     stderr: "pipe",
+    timeout: options.timeout,
+    killSignal: options.killSignal,
   });
   return {
     exitCode: result.exitCode,
@@ -323,11 +352,6 @@ Version ${version} · Pi package \`${NPM_PACKAGE_NAME}\`
 }
 
 function npmManifest(plan) {
-  const root = rootManifest();
-  const pdfVersion = root.dependencies?.["pdfjs-dist"];
-  if (typeof pdfVersion !== "string" || pdfVersion.length === 0) {
-    throw new Error("Root package.json must pin pdfjs-dist for npm packaging");
-  }
   return {
     name: NPM_PACKAGE_NAME,
     version: plan.packageVersion,
@@ -353,7 +377,7 @@ function npmManifest(plan) {
       "all-in-one",
     ],
     engines: { node: ">=22.19.0" },
-    dependencies: { "pdfjs-dist": pdfVersion },
+    dependencies: runtimeDependencies(),
     peerDependencies: HOST_PEERS,
     pi: { extensions: ["./index.js"] },
     piSparkles: {
@@ -390,13 +414,14 @@ function releaseLock(plan, packageDirectory) {
     sourceAggregate: {
       package: aggregateLock.package,
       aggregateLockSha256: sha256File(aggregateLockPath),
+      entrypointSha256: aggregateLock.entrypointSha256,
       bundleSha256: aggregateLock.bundleSha256,
     },
     npmRegistry: NPM_REGISTRY,
     npmFiles: [...NPM_PACKAGE_FILES, "package.json"].sort((left, right) =>
       left.localeCompare(right),
     ),
-    runtimeDependencies: { "pdfjs-dist": rootManifest().dependencies["pdfjs-dist"] },
+    runtimeDependencies: runtimeDependencies(),
     runtimePeerDependencies: HOST_PEERS,
     credentialValuesIncluded: false,
     lifecycleScriptsIncluded: false,
@@ -479,7 +504,7 @@ export function npmPackagePlan(
 
 export function verifyNpmPackageDirectory(directory, expectedPlan) {
   const root = resolve(directory);
-  const expectedPdfVersion = rootManifest().dependencies?.["pdfjs-dist"];
+  const expectedRuntimeDependencies = runtimeDependencies();
   const expectedFiles = [...NPM_PACKAGE_FILES, "package.json"].sort((left, right) =>
     left.localeCompare(right),
   );
@@ -506,7 +531,8 @@ export function verifyNpmPackageDirectory(directory, expectedPlan) {
     JSON.stringify(manifest.files) !== JSON.stringify(NPM_PACKAGE_FILES) ||
     manifest.license !== "Apache-2.0" ||
     manifest.engines?.node !== ">=22.19.0" ||
-    manifest.dependencies?.["pdfjs-dist"] !== expectedPdfVersion ||
+    JSON.stringify(manifest.dependencies) !==
+      JSON.stringify(expectedRuntimeDependencies) ||
     JSON.stringify(manifest.peerDependencies) !== JSON.stringify(HOST_PEERS) ||
     manifest.scripts !== undefined ||
     lock.lifecycleScriptsIncluded !== false ||
@@ -527,12 +553,16 @@ export function verifyNpmPackageDirectory(directory, expectedPlan) {
     aggregateLock.releasable !== lock.publishable ||
     aggregateLock.throughTierId !== lock.throughTierId ||
     aggregateLock.pluginCount !== lock.pluginCount ||
-    aggregateLock.bundleSha256 !== sha256File(join(root, "index.js")) ||
+    aggregateLock.entrypointSha256 !== sha256File(join(root, "index.js")) ||
+    aggregateLock.bundleSha256 !== sha256File(join(root, "runtime.js")) ||
     lock.sourceAggregate.aggregateLockSha256 !==
       sha256File(join(root, "aggregate-lock.json")) ||
+    lock.sourceAggregate.entrypointSha256 !==
+      aggregateLock.entrypointSha256 ||
     lock.sourceAggregate.bundleSha256 !== aggregateLock.bundleSha256 ||
     JSON.stringify(lock.npmFiles) !== JSON.stringify(expectedFiles) ||
-    lock.runtimeDependencies?.["pdfjs-dist"] !== expectedPdfVersion ||
+    JSON.stringify(lock.runtimeDependencies) !==
+      JSON.stringify(expectedRuntimeDependencies) ||
     JSON.stringify(lock.runtimePeerDependencies) !== JSON.stringify(HOST_PEERS) ||
     aggregateLock.plugins.some((plugin) => plugin.brokerOrderMutation === true)
   ) {
@@ -906,17 +936,21 @@ export function npmInstallSmoke(
       NPM_PACKAGE_NAME,
     );
     verifyNpmPackageDirectory(installedPackage, expectedPlan);
-    const pdfVersion = rootManifest().dependencies["pdfjs-dist"];
-    const installedPdfManifest = JSON.parse(
-      readFileSync(
-        join(installation, "node_modules", "pdfjs-dist", "package.json"),
-        "utf8",
-      ),
-    );
-    if (installedPdfManifest.version !== pdfVersion) {
-      throw new Error(
-        `Clean npm installation resolved pdfjs-dist ${installedPdfManifest.version}, expected ${pdfVersion}`,
+    const installedRuntimeDependencies = runtimeDependencies();
+    for (const [name, expectedVersion] of Object.entries(
+      installedRuntimeDependencies,
+    )) {
+      const installedManifest = JSON.parse(
+        readFileSync(
+          join(installation, "node_modules", name, "package.json"),
+          "utf8",
+        ),
       );
+      if (installedManifest.version !== expectedVersion) {
+        throw new Error(
+          `Clean npm installation resolved ${name} ${installedManifest.version}, expected ${expectedVersion}`,
+        );
+      }
     }
 
     const entrypoint = join(installedPackage, "index.js");
@@ -926,10 +960,14 @@ export function npmInstallSmoke(
         [
           "--input-type=module",
           "--eval",
-          'import { pathToFileURL } from "node:url"; const loaded = await import(pathToFileURL(process.argv[1]).href); if (typeof loaded.default !== "function") throw new Error("npm entrypoint has no default extension export");',
+          'import { pathToFileURL } from "node:url"; delete globalThis.DOMMatrix; delete globalThis.Path2D; const loaded = await import(pathToFileURL(process.argv[1]).href); if (typeof loaded.default !== "function") throw new Error("npm entrypoint has no default extension export"); if (globalThis.DOMMatrix !== undefined || globalThis.Path2D !== undefined) throw new Error("npm entrypoint eagerly initialized PDF canvas globals");',
           entrypoint,
         ],
-        { cwd: installation },
+        {
+          cwd: installation,
+          timeout: STARTUP_SMOKE_TIMEOUT_MILLISECONDS,
+          killSignal: "SIGKILL",
+        },
       ),
       "installed npm entrypoint import",
     );
@@ -948,12 +986,14 @@ export function npmInstallSmoke(
         {
           cwd: installation,
           env: withoutProviderCredentials(aggregateLock),
+          timeout: STARTUP_SMOKE_TIMEOUT_MILLISECONDS,
+          killSignal: "SIGKILL",
         },
       ),
       "plain Pi npm tarball load",
     );
     console.log(
-      `${summary.throughTierId} npm install smoke passed with ${piCommand} and pdfjs-dist ${pdfVersion}`,
+      `${summary.throughTierId} npm install smoke passed with ${piCommand}, @napi-rs/canvas ${installedRuntimeDependencies["@napi-rs/canvas"]}, and pdfjs-dist ${installedRuntimeDependencies["pdfjs-dist"]}`,
     );
     return summary;
   } finally {

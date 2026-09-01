@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
-import { getDocument, version } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 const parserName = "pdfjs-dist";
+let pdfJsPromise;
+
+function loadPdfJs() {
+  pdfJsPromise ??= import("pdfjs-dist/legacy/build/pdf.mjs");
+  return pdfJsPromise;
+}
 
 export async function inspect_pdf(
   bodyBase64,
@@ -59,6 +64,10 @@ export async function inspect_pdf(
   }, timeoutMilliseconds);
 
   try {
+    const { getDocument, version } = await loadPdfJs();
+    if (stopKind !== null || cancellation.signal.aborted) {
+      return { ok: false, kind: stopKind ?? "cancelled" };
+    }
     loadingTask = getDocument({
       data: Uint8Array.from(bytes),
       stopAtErrors: true,
