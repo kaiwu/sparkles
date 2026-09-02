@@ -242,6 +242,10 @@ export async function verifyAgainstDshTools({ log = console.log } = {}) {
           section.text.includes("cn_stock_symbol_search covers stock listings only") &&
           section.text.includes("call cn_index_constituents exactly once with venue sse and code 000688") &&
           section.text.includes("also call cn_index_industry_composition exactly once with the same identity") &&
+          section.text.includes("call cn_raw_vendor_history first with provider eastmoney") &&
+          section.text.includes("state that Sina was not called, and ask whether the user explicitly wants the separately selected Sina source") &&
+          section.text.includes("Never call Sina in the same step or automatically") &&
+          section.text.includes("Only after the user explicitly accepts Sina may a new cn_raw_vendor_history call") &&
           section.text.includes("hk and us are track_partial") &&
           section.text.includes("Never relabel, reuse, or substitute the cn result across tracks") &&
           section.text.includes(expectedTushareGuidance) &&
@@ -271,9 +275,11 @@ export async function verifyAgainstDshTools({ log = console.log } = {}) {
     )?.parameters;
     if (
       !historySchema?.properties?.endDate?.description?.includes("future") ||
-      !historySchema?.properties?.limit?.description?.includes("value 1..1000")
+      !historySchema?.properties?.limit?.description?.includes("value 1..1000") ||
+      !historySchema?.required?.includes("provider") ||
+      !historySchema?.properties?.provider?.enum?.includes("sina")
     ) {
-      failures.push("DSH schema is missing bounded current-date history guidance");
+      failures.push("DSH schema is missing bounded history or explicit-provider guidance");
     }
     scopedCounterparts = true;
 

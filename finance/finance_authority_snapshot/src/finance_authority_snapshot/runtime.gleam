@@ -3,6 +3,7 @@ import finance_http/binary_client
 import finance_http/binary_pool
 import finance_http/binary_response
 import finance_http/client
+import finance_http/limiter
 import finance_http/pool
 import finance_http/rate_limit
 import finance_http/request
@@ -10,13 +11,12 @@ import finance_http/response.{type Response}
 import finance_http/retry
 import finance_http/scheduler
 import finance_http/transport.{type Cancellation, type TransportError}
+import gleam/int
 import gleam/javascript/promise.{type Promise}
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
-
-type Cell(value)
 
 pub opaque type Policy {
   Policy(
@@ -108,15 +108,22 @@ pub fn policy(
 }
 
 pub fn new(value: Policy) -> Result(Runtime, InitError) {
-  new_with(value, transport.send, client.cancellable_sleep, client.system_clock)
+  new_configured(
+    value,
+    transport.send,
+    client.cancellable_sleep,
+    client.system_clock,
+    True,
+  )
 }
 
 pub fn new_binary(value: Policy) -> Result(BinaryRuntime, InitError) {
-  new_binary_with(
+  new_binary_configured(
     value,
     transport.send_binary,
     client.cancellable_sleep,
     client.system_clock,
+    True,
   )
 }
 
@@ -125,6 +132,16 @@ pub fn new_with(
   sender: client.Sender,
   sleeper: client.Sleeper,
   clock: client.Clock,
+) -> Result(Runtime, InitError) {
+  new_configured(value, sender, sleeper, clock, False)
+}
+
+fn new_configured(
+  value: Policy,
+  sender: client.Sender,
+  sleeper: client.Sleeper,
+  clock: client.Clock,
+  share_limit: Bool,
 ) -> Result(Runtime, InitError) {
   let now = clock()
   let reset_milliseconds =
@@ -142,14 +159,17 @@ pub fn new_with(
     )
     |> result.map_error(InvalidRate),
   )
-  let cell = new_cell(state)
+  let admission = case share_limit {
+    True -> limiter.shared(rate_scope(value), state)
+    False -> limiter.isolated(state)
+  }
   let policy_client =
     client.new(
       value.retry_policy,
       fn(request_value, cancellation) {
         gated_send(
           value,
-          cell,
+          admission,
           request_value,
           cancellation,
           sender,
@@ -176,6 +196,16 @@ pub fn new_binary_with(
   sleeper: client.Sleeper,
   clock: client.Clock,
 ) -> Result(BinaryRuntime, InitError) {
+  new_binary_configured(value, sender, sleeper, clock, False)
+}
+
+fn new_binary_configured(
+  value: Policy,
+  sender: binary_client.Sender,
+  sleeper: client.Sleeper,
+  clock: client.Clock,
+  share_limit: Bool,
+) -> Result(BinaryRuntime, InitError) {
   let now = clock()
   let reset_milliseconds =
     time.unix_milliseconds(now) + time.duration_milliseconds(value.window)
@@ -192,14 +222,17 @@ pub fn new_binary_with(
     )
     |> result.map_error(InvalidRate),
   )
-  let cell = new_cell(state)
+  let admission = case share_limit {
+    True -> limiter.shared(rate_scope(value), state)
+    False -> limiter.isolated(state)
+  }
   let policy_client =
     binary_client.new(
       value.retry_policy,
       fn(request_value, cancellation) {
         gated_send_binary(
           value,
-          cell,
+          admission,
           request_value,
           cancellation,
           sender,
@@ -248,7 +281,7 @@ pub fn allowed_paths(value: Policy) -> List(String) {
 
 fn gated_send(
   policy: Policy,
-  cell: Cell(rate_limit.State),
+  admission: limiter.Limiter,
   request_value: request.Request,
   cancellation: Cancellation,
   sender: client.Sender,
@@ -262,7 +295,12 @@ fn gated_send(
     False, _ | _, False ->
       promise.resolve(Error(transport.InvalidTransportResult))
     True, True -> {
-      use admitted <- promise.await(admit(cell, cancellation, sleeper, clock))
+      use admitted <- promise.await(limiter.admit(
+        admission,
+        cancellation,
+        sleeper,
+        clock,
+      ))
       case admitted {
         Error(error) -> promise.resolve(Error(error))
         Ok(Nil) -> sender(request_value, cancellation)
@@ -273,7 +311,7 @@ fn gated_send(
 
 fn gated_send_binary(
   policy: Policy,
-  cell: Cell(rate_limit.State),
+  admission: limiter.Limiter,
   request_value: request.Request,
   cancellation: Cancellation,
   sender: binary_client.Sender,
@@ -287,7 +325,12 @@ fn gated_send_binary(
     False, _ | _, False ->
       promise.resolve(Error(transport.InvalidTransportResult))
     True, True -> {
-      use admitted <- promise.await(admit(cell, cancellation, sleeper, clock))
+      use admitted <- promise.await(limiter.admit(
+        admission,
+        cancellation,
+        sleeper,
+        clock,
+      ))
       case admitted {
         Error(error) -> promise.resolve(Error(error))
         Ok(Nil) -> sender(request_value, cancellation)
@@ -296,39 +339,13 @@ fn gated_send_binary(
   }
 }
 
-fn admit(
-  cell: Cell(rate_limit.State),
-  cancellation: Cancellation,
-  sleeper: client.Sleeper,
-  clock: client.Clock,
-) -> Promise(Result(Nil, TransportError)) {
-  case transport.is_cancelled(cancellation) {
-    True -> promise.resolve(Error(transport.Cancelled))
-    False -> {
-      let now = clock()
-      case rate_limit.acquire(read_cell(cell), now) {
-        Error(_) -> promise.resolve(Error(transport.InvalidTransportResult))
-        Ok(#(next, rate_limit.Permit)) -> {
-          write_cell(cell, next)
-          promise.resolve(Ok(Nil))
-        }
-        Ok(#(_, rate_limit.WaitUntil(reset))) -> {
-          let milliseconds =
-            time.unix_milliseconds(reset) - time.unix_milliseconds(now)
-          case time.duration(milliseconds) {
-            Error(_) -> promise.resolve(Error(transport.InvalidTransportResult))
-            Ok(wait) -> {
-              use completed <- promise.await(sleeper(wait, cancellation))
-              case completed {
-                False -> promise.resolve(Error(transport.Cancelled))
-                True -> admit(cell, cancellation, sleeper, clock)
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+fn rate_scope(value: Policy) -> String {
+  "authority:"
+  <> value.origin
+  <> ":"
+  <> int.to_string(value.admissions_per_window)
+  <> ":"
+  <> int.to_string(time.duration_milliseconds(value.window))
 }
 
 fn first_invalid_path(values: List(String)) -> Option(String) {
@@ -381,12 +398,3 @@ fn valid_path(value: String) -> Bool {
   && !string.contains(value, "\n")
   && !string.contains(value, "\u{0}")
 }
-
-@external(javascript, "./runtime_ffi.mjs", "new_cell")
-fn new_cell(value: value) -> Cell(value)
-
-@external(javascript, "./runtime_ffi.mjs", "read_cell")
-fn read_cell(cell: Cell(value)) -> value
-
-@external(javascript, "./runtime_ffi.mjs", "write_cell")
-fn write_cell(cell: Cell(value), value: value) -> Nil

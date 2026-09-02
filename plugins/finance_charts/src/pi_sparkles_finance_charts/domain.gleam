@@ -226,10 +226,17 @@ fn validate_adjustment(
   case input.kind, input.label {
     "provider_adjusted", Some(label) ->
       require_text("context.adjustment.label", label)
+    "provider_defined", Some(label) ->
+      require_text("context.adjustment.label", label)
     "provider_adjusted", None ->
       Error(InvalidField(
         "context.adjustment.label",
         "provider_adjusted requires its exact provider basis label",
+      ))
+    "provider_defined", None ->
+      Error(InvalidField(
+        "context.adjustment.label",
+        "provider_defined requires its exact provider basis label",
       ))
     "raw", None
     | "split_adjusted", None
@@ -243,7 +250,7 @@ fn validate_adjustment(
     ->
       Error(InvalidField(
         "context.adjustment.label",
-        "only provider_adjusted accepts a label",
+        "only provider_adjusted and provider_defined accept a label",
       ))
     _, _ ->
       Error(InvalidField(

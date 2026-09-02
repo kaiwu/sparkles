@@ -8,6 +8,8 @@ let fetchCalls = 0;
 
 const sourceReference =
   "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.600519&klt=101&fqt=0&beg=20260618&end=20260624&lmt=250";
+const sinaSourceReference =
+  "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=sh600519&scale=240&ma=no&datalen=250";
 
 beforeEach(() => {
   fetchCalls = 0;
@@ -218,6 +220,29 @@ describe("CN OHLCV gap receipt composition", () => {
         input({ statusReceipts: [] }),
       ),
     ).rejects.toThrow("2026-06-22");
+    expect(fetchCalls).toBe(0);
+  });
+
+  test("accepts a content-bound Sina fallback receipt without network access", async () => {
+    const tools = await harness();
+    const result = await execute(
+      tools.get("cn_ohlcv_gap_assessment"),
+      input({
+        providerReceipt: {
+          provider: "sina",
+          sourceReference: sinaSourceReference,
+        },
+      }),
+    );
+
+    expect(result.details.providerReceipt).toMatchObject({
+      provider: "sina",
+      sourceReference: sinaSourceReference,
+      pagination: "complete",
+    });
+    expect(result.details.assessment.state).toBe(
+      "fully_classified_from_supplied_receipts",
+    );
     expect(fetchCalls).toBe(0);
   });
 

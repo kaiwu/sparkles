@@ -142,6 +142,21 @@ describe("finance track status binding", () => {
       "Do not call cn_raw_vendor_history for 000688",
     );
     expect(result.systemPrompt).toContain(
+      "call cn_raw_vendor_history first with provider eastmoney",
+    );
+    expect(result.systemPrompt).toContain(
+      "state that Sina was not called, and ask whether the user explicitly wants the separately selected Sina source",
+    );
+    expect(result.systemPrompt).toContain(
+      "Never call Sina in the same step or automatically",
+    );
+    expect(result.systemPrompt).toContain(
+      "Only after the user explicitly accepts Sina may a new cn_raw_vendor_history call",
+    );
+    expect(result.systemPrompt).toContain(
+      "state the data-source change explicitly",
+    );
+    expect(result.systemPrompt).toContain(
       "call cn_index_constituents exactly once with venue sse and code 000688",
     );
     expect(result.systemPrompt).toContain(

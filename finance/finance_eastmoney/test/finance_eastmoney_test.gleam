@@ -8,8 +8,12 @@ import finance_eastmoney/overview
 import finance_eastmoney/query
 import finance_eastmoney/quote
 import finance_eastmoney/request as provider_request
+import finance_eastmoney/runtime
 import finance_http/request
+import finance_http/response as http_response
+import finance_http/transport
 import finance_track
+import gleam/javascript/promise
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
@@ -65,6 +69,61 @@ pub fn requests_are_caller_identified_bounded_and_unadjusted_test() {
   |> should.equal(
     "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=116.00700&klt=101&fqt=0&beg=20260801&end=20260805&lmt=10",
   )
+}
+
+pub fn runtime_paces_history_at_one_request_per_two_seconds_test() {
+  let access = access()
+  let request_value = runtime_history_request(access)
+  let now = instant(1000)
+  let assert Ok(provider_runtime) =
+    runtime.new_with(
+      access,
+      fn(_, _) { promise.resolve(Ok(http_ok())) },
+      fn(wait, _) {
+        time.duration_milliseconds(wait) |> should.equal(2000)
+        promise.resolve(False)
+      },
+      fn() { now },
+    )
+  use first <- promise.await(runtime.send(
+    provider_runtime,
+    "eastmoney-history-1",
+    request_value,
+    transport.new_cancellation(),
+  ))
+  use second <- promise.await(runtime.send(
+    provider_runtime,
+    "eastmoney-history-2",
+    request_value,
+    transport.new_cancellation(),
+  ))
+  first |> should.be_ok
+  second |> should.be_error
+  promise.resolve(Nil)
+}
+
+pub fn runtime_does_not_retry_eastmoney_network_failures_test() {
+  let access = access()
+  let assert Ok(provider_runtime) =
+    runtime.new_with(
+      access,
+      fn(_, _) { promise.resolve(Error(transport.NetworkFailure)) },
+      fn(_, _) {
+        should.fail()
+        promise.resolve(False)
+      },
+      fn() { instant(1000) },
+    )
+  use outcome <- promise.await(runtime.send(
+    provider_runtime,
+    "eastmoney-one-attempt",
+    runtime_history_request(access),
+    transport.new_cancellation(),
+  ))
+  string.inspect(outcome)
+  |> string.contains("attempts: 1")
+  |> should.be_true
+  promise.resolve(Nil)
 }
 
 pub fn cn_overview_request_and_decoder_are_bounded_exact_and_identity_checked_test() {
@@ -314,6 +373,33 @@ fn access() -> finance_eastmoney.Access {
 
 fn civil(year: Int, month: Int, day: Int) -> time.Date {
   let assert Ok(value) = time.date(year, month, day)
+  value
+}
+
+fn runtime_history_request(
+  access: finance_eastmoney.Access,
+) -> request.Request {
+  let assert Ok(plan) =
+    query.history(
+      finance_track.Cn,
+      query.CnSse,
+      "600519",
+      civil(2026, 8, 1),
+      civil(2026, 8, 5),
+      10,
+    )
+  let assert Ok(value) = provider_request.history(access, plan)
+  value
+}
+
+fn instant(milliseconds: Int) -> time.Instant {
+  let assert Ok(value) = time.instant(milliseconds)
+  value
+}
+
+fn http_ok() -> http_response.Response {
+  let assert Ok(elapsed) = time.duration(1)
+  let assert Ok(value) = http_response.new(200, [], "{}", 2, elapsed)
   value
 }
 

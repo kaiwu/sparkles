@@ -1,8 +1,12 @@
 import finance_core/time
 import finance_http/request as http_request
+import finance_http/response as http_response
+import finance_http/transport
 import finance_twelve_data
 import finance_twelve_data/request
 import finance_twelve_data/response
+import finance_twelve_data/runtime
+import gleam/javascript/promise
 import gleam/option.{None, Some}
 import gleeunit
 import gleeunit/should
@@ -76,4 +80,40 @@ pub fn statistics_rejects_fractional_share_counts_test() {
   let fixture =
     "{\"meta\":{\"symbol\":\"AAPL\",\"name\":\"Apple Inc.\",\"currency\":\"USD\",\"exchange\":\"NASDAQ\",\"mic_code\":\"XNGS\",\"exchange_timezone\":\"America/New_York\"},\"statistics\":{\"stock_statistics\":{\"shares_outstanding\":1.5,\"float_shares\":1}}}"
   response.decode_statistics(fixture) |> should.be_error
+}
+
+pub fn runtime_applies_a_time_quota_in_addition_to_concurrency_test() {
+  let assert Ok(access) = finance_twelve_data.access("test-api-key-123")
+  let assert Ok(request_value) = request.profile(access, "AAPL", "XNGS")
+  let assert Ok(now) = time.instant(1000)
+  let assert Ok(provider_runtime) =
+    runtime.new_with(
+      fn(_, _) { promise.resolve(Ok(http_ok())) },
+      fn(wait, _) {
+        time.duration_milliseconds(wait) |> should.equal(1000)
+        promise.resolve(False)
+      },
+      fn() { now },
+    )
+  use first <- promise.await(runtime.send(
+    provider_runtime,
+    "twelve-data-1",
+    request_value,
+    transport.new_cancellation(),
+  ))
+  use second <- promise.await(runtime.send(
+    provider_runtime,
+    "twelve-data-2",
+    request_value,
+    transport.new_cancellation(),
+  ))
+  first |> should.be_ok
+  second |> should.be_error
+  promise.resolve(Nil)
+}
+
+fn http_ok() -> http_response.Response {
+  let assert Ok(elapsed) = time.duration(1)
+  let assert Ok(value) = http_response.new(200, [], "{}", 2, elapsed)
+  value
 }

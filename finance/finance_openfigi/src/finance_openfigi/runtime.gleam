@@ -1,7 +1,7 @@
 import finance_core/time
 import finance_http/client
+import finance_http/limiter
 import finance_http/pool
-import finance_http/rate_limit
 import finance_http/request
 import finance_http/response.{type Response}
 import finance_http/retry
@@ -10,8 +10,6 @@ import finance_http/transport.{type Cancellation, type TransportError}
 import finance_openfigi.{type Access, type Endpoint}
 import gleam/javascript/promise.{type Promise}
 import gleam/result
-
-type Cell(value)
 
 pub opaque type Runtime {
   Runtime(pool: pool.Pool)
@@ -24,11 +22,12 @@ pub type InitError {
 }
 
 pub fn new(access: Access) -> Result(Runtime, InitError) {
-  new_with(
+  new_configured(
     access,
     transport.send,
     client.cancellable_sleep,
     client.system_clock,
+    True,
   )
 }
 
@@ -39,6 +38,16 @@ pub fn new_with(
   sleeper: client.Sleeper,
   clock: client.Clock,
 ) -> Result(Runtime, InitError) {
+  new_configured(access, sender, sleeper, clock, False)
+}
+
+fn new_configured(
+  access: Access,
+  sender: client.Sender,
+  sleeper: client.Sleeper,
+  clock: client.Clock,
+  share_limit: Bool,
+) -> Result(Runtime, InitError) {
   let now = clock()
   use mapping_rate <- result.try(
     finance_openfigi.initial_rate_state(access, finance_openfigi.Mapping, now)
@@ -48,15 +57,24 @@ pub fn new_with(
     finance_openfigi.initial_rate_state(access, finance_openfigi.Search, now)
     |> result.map_error(InvalidSearchRate),
   )
-  let mapping_cell = new_cell(mapping_rate)
-  let search_cell = new_cell(search_rate)
+  let access_name = finance_openfigi.access_name(access)
+  let mapping_limiter = case share_limit {
+    True ->
+      limiter.shared("openfigi:" <> access_name <> ":mapping:v1", mapping_rate)
+    False -> limiter.isolated(mapping_rate)
+  }
+  let search_limiter = case share_limit {
+    True ->
+      limiter.shared("openfigi:" <> access_name <> ":search:v1", search_rate)
+    False -> limiter.isolated(search_rate)
+  }
   let policy_client =
     client.new(
       retry_policy(),
       fn(request_value, cancellation) {
         gated_send(
-          mapping_cell,
-          search_cell,
+          mapping_limiter,
+          search_limiter,
           request_value,
           cancellation,
           sender,
@@ -93,8 +111,8 @@ pub fn send(
 }
 
 fn gated_send(
-  mapping_cell: Cell(rate_limit.State),
-  search_cell: Cell(rate_limit.State),
+  mapping_limiter: limiter.Limiter,
+  search_limiter: limiter.Limiter,
   request_value: request.Request,
   cancellation: Cancellation,
   sender: client.Sender,
@@ -104,49 +122,19 @@ fn gated_send(
   case endpoint(request.path(request_value)) {
     Error(_) -> promise.resolve(Error(transport.InvalidTransportResult))
     Ok(endpoint_value) -> {
-      let cell = case endpoint_value {
-        finance_openfigi.Mapping -> mapping_cell
-        finance_openfigi.Search -> search_cell
+      let admission = case endpoint_value {
+        finance_openfigi.Mapping -> mapping_limiter
+        finance_openfigi.Search -> search_limiter
       }
-      use admitted <- promise.await(admit(cell, cancellation, sleeper, clock))
+      use admitted <- promise.await(limiter.admit(
+        admission,
+        cancellation,
+        sleeper,
+        clock,
+      ))
       case admitted {
         Error(error) -> promise.resolve(Error(error))
         Ok(Nil) -> sender(request_value, cancellation)
-      }
-    }
-  }
-}
-
-fn admit(
-  cell: Cell(rate_limit.State),
-  cancellation: Cancellation,
-  sleeper: client.Sleeper,
-  clock: client.Clock,
-) -> Promise(Result(Nil, TransportError)) {
-  case transport.is_cancelled(cancellation) {
-    True -> promise.resolve(Error(transport.Cancelled))
-    False -> {
-      let now = clock()
-      case rate_limit.acquire(read_cell(cell), now) {
-        Error(_) -> promise.resolve(Error(transport.InvalidTransportResult))
-        Ok(#(next, rate_limit.Permit)) -> {
-          write_cell(cell, next)
-          promise.resolve(Ok(Nil))
-        }
-        Ok(#(_, rate_limit.WaitUntil(reset_at))) -> {
-          let wait_milliseconds =
-            time.unix_milliseconds(reset_at) - time.unix_milliseconds(now)
-          case time.duration(wait_milliseconds) {
-            Error(_) -> promise.resolve(Error(transport.InvalidTransportResult))
-            Ok(duration) -> {
-              use completed <- promise.await(sleeper(duration, cancellation))
-              case completed {
-                False -> promise.resolve(Error(transport.Cancelled))
-                True -> admit(cell, cancellation, sleeper, clock)
-              }
-            }
-          }
-        }
       }
     }
   }
@@ -173,12 +161,3 @@ fn retry_policy() -> retry.Policy {
     )
   policy
 }
-
-@external(javascript, "./runtime_ffi.mjs", "new_cell")
-fn new_cell(value: value) -> Cell(value)
-
-@external(javascript, "./runtime_ffi.mjs", "read_cell")
-fn read_cell(cell: Cell(value)) -> value
-
-@external(javascript, "./runtime_ffi.mjs", "write_cell")
-fn write_cell(cell: Cell(value), value: value) -> Nil

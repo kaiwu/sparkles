@@ -20,6 +20,11 @@ import finance_ohlcv
 import finance_ohlcv/series_handoff
 import finance_provenance/hash
 import finance_provenance/identity as provenance_identity
+import finance_sina
+import finance_sina/history as sina_history
+import finance_sina/query as sina_query
+import finance_sina/request as sina_request
+import finance_sina/runtime as sina_runtime
 import finance_track
 import finance_track/context as track_context
 import finance_track/json as track_json
@@ -48,12 +53,23 @@ pub type Input {
     start_date: time.Date,
     end_date: time.Date,
     limit: Int,
+    provider: ProviderSelection,
   )
 }
 
-type Provider {
+pub type ProviderSelection {
+  EastmoneySelected
+  SinaSelected
+}
+
+type EastmoneyProvider {
   Ready(access: finance_eastmoney.Access, runtime: runtime.Runtime)
   InvalidConfiguration(reason: String)
+}
+
+type SinaProvider {
+  SinaReady(access: finance_sina.Access, runtime: sina_runtime.Runtime)
+  SinaInvalidConfiguration(reason: String)
 }
 
 type FetchOutcome {
@@ -61,106 +77,123 @@ type FetchOutcome {
 }
 
 pub fn extension(api: pi.ExtensionApi) -> Promise(Nil) {
-  let provider = provider()
+  let eastmoney = provider()
+  let sina = sina_provider()
   tool.register_compact(
     api,
     "cn_stock_ohlcv",
     "CN exact daily OHLCV",
-    "Fetch bounded raw Eastmoney mainland daily bars for an exact caller-declared venue, board, share class, code, and currency; use OHLCV evidence by default for ordinary buy-now, sell-timing, entry, exit, stop, target, trend, momentum, or volatility questions even when the user does not explicitly request tools; preserve provider rows and expose unknown volume/session/calendar/rights facts",
-    "For a caller-supplied exact mainland venue and code, call this directly for current-data-dependent opinions without symbol search or CNINFO discovery; never cross venues, adjust, synthesize bars, or guess timestamps and suspensions",
+    "Fetch bounded raw mainland daily bars for an exact caller-declared venue, board, share class, code, currency, and provider; an Eastmoney failure only suggests Sina and never calls it; select Sina in a new call only after the user explicitly chooses that CN-only alternative; use OHLCV evidence by default for ordinary buy-now, sell-timing, entry, exit, stop, target, trend, momentum, or volatility questions",
+    "For a caller-supplied exact mainland venue and code, select provider eastmoney normally; if it fails, report the suggestion and ask the user before making a separate call with provider sina; never automatically fall back, cross tracks or venues, adjust, synthesize bars, or hide a user-selected provider change",
     tool.parameters(input_schema(), input_decoder()),
     tool.Parallel,
     fn(id, input, signal, _updates, _ctx) {
-      case provider {
-        InvalidConfiguration(reason) -> tool.reject(reason)
-        Ready(access, provider_runtime) ->
-          case plan(input) {
-            Error(_) ->
-              tool.reject("Invalid exact CN Eastmoney OHLCV identity or query")
-            Ok(query_plan) -> {
-              use fetched <- promise.await(fetch(
-                provider_runtime,
-                access,
-                query_plan,
+      case plan(input) {
+        Error(_) -> tool.reject("Invalid exact CN OHLCV identity or query")
+        Ok(query_plan) ->
+          case input.provider {
+            SinaSelected ->
+              use_sina(
+                api,
+                sina,
+                input,
                 id,
                 transport.from_abort_signal(raw.dynamic(signal)),
-              ))
-              case fetched {
-                Error(message) -> tool.reject(message)
-                Ok(outcome) -> {
-                  let assert Ok(retrieved_at) =
-                    time.instant(environment.now_milliseconds())
-                  case
-                    normalization.batch(
-                      query_plan,
-                      outcome.history,
-                      retrieved_at,
-                      input.declared_currency,
-                    )
-                  {
-                    Error(error) ->
-                      tool.reject(
-                        "Eastmoney rows failed exact CN OHLCV validation: "
-                        <> string.inspect(error),
-                      )
-                    Ok(batch) ->
+              )
+            EastmoneySelected ->
+              case eastmoney {
+                InvalidConfiguration(reason) ->
+                  tool.reject(eastmoney_failure_with_sina_suggestion(reason))
+                Ready(access, provider_runtime) -> {
+                  use fetched <- promise.await(fetch(
+                    provider_runtime,
+                    access,
+                    query_plan,
+                    id,
+                    transport.from_abort_signal(raw.dynamic(signal)),
+                  ))
+                  case fetched {
+                    Error(message) ->
+                      tool.reject(eastmoney_failure_with_sina_suggestion(
+                        message,
+                      ))
+                    Ok(outcome) -> {
+                      let assert Ok(retrieved_at) =
+                        time.instant(environment.now_milliseconds())
                       case
-                        build_gap_receipt(
-                          input,
+                        normalization.batch(
                           query_plan,
-                          batch,
-                          outcome.page_receipt,
+                          outcome.history,
                           retrieved_at,
+                          input.declared_currency,
                         )
                       {
-                        Error(message) -> tool.reject(message)
-                        Ok(#(receipt, digest)) ->
+                        Error(error) ->
+                          tool.reject(
+                            "Eastmoney rows failed exact CN OHLCV validation: "
+                            <> string.inspect(error),
+                          )
+                        Ok(batch) ->
                           case
-                            history_series_handoff(
+                            build_gap_receipt(
                               input,
-                              outcome.history,
+                              query_plan,
+                              batch,
+                              outcome.page_receipt,
                               retrieved_at,
-                              receipt,
                             )
                           {
                             Error(message) -> tool.reject(message)
-                            Ok(series_value) -> {
-                              pi.append_entry(
-                                api,
-                                series_handoff.event_type,
-                                raw.dynamic(series_handoff.encode(series_value)),
-                              )
-                              let details =
-                                result_json(
+                            Ok(#(receipt, digest)) ->
+                              case
+                                history_series_handoff(
                                   input,
-                                  query_plan,
                                   outcome.history,
-                                  batch,
                                   retrieved_at,
                                   receipt,
-                                  digest,
-                                  series_value,
                                 )
-                              tool.text_result(
-                                model_content(
-                                  render(input, outcome.history, batch),
-                                  input,
-                                  outcome.history,
-                                  retrieved_at,
-                                  receipt,
-                                  digest,
-                                  series_value,
-                                ),
-                                details,
-                              )
-                              |> promise.resolve
-                            }
+                              {
+                                Error(message) -> tool.reject(message)
+                                Ok(series_value) -> {
+                                  pi.append_entry(
+                                    api,
+                                    series_handoff.event_type,
+                                    raw.dynamic(series_handoff.encode(
+                                      series_value,
+                                    )),
+                                  )
+                                  let details =
+                                    result_json(
+                                      input,
+                                      query_plan,
+                                      outcome.history,
+                                      batch,
+                                      retrieved_at,
+                                      receipt,
+                                      digest,
+                                      series_value,
+                                    )
+                                  tool.text_result(
+                                    model_content(
+                                      render(input, outcome.history, batch),
+                                      input,
+                                      outcome.history,
+                                      retrieved_at,
+                                      receipt,
+                                      digest,
+                                      series_value,
+                                    ),
+                                    details,
+                                  )
+                                  |> promise.resolve
+                                }
+                              }
                           }
                       }
+                    }
                   }
                 }
               }
-            }
           }
       }
     },
@@ -168,7 +201,7 @@ pub fn extension(api: pi.ExtensionApi) -> Promise(Nil) {
   promise.resolve(Nil)
 }
 
-fn provider() -> Provider {
+fn provider() -> EastmoneyProvider {
   case finance_eastmoney.access(environment.product(), environment.contact()) {
     Error(_) -> InvalidConfiguration("CN OHLCV requires AGENT_CONTACT")
     Ok(access) ->
@@ -177,6 +210,21 @@ fn provider() -> Provider {
         Error(_) ->
           InvalidConfiguration(
             "Eastmoney bounded market-data runtime could not initialize safely",
+          )
+      }
+  }
+}
+
+fn sina_provider() -> SinaProvider {
+  case finance_sina.access(environment.product(), environment.contact()) {
+    Error(_) ->
+      SinaInvalidConfiguration("Selected Sina provider requires AGENT_CONTACT")
+    Ok(access) ->
+      case sina_runtime.new(access) {
+        Ok(provider_runtime) -> SinaReady(access, provider_runtime)
+        Error(_) ->
+          SinaInvalidConfiguration(
+            "Selected Sina bounded market-data runtime could not initialize safely",
           )
       }
   }
@@ -229,7 +277,7 @@ fn fetch(provider_runtime, access, plan, id, cancellation) {
                 <> int.to_string(status),
               ))
             True ->
-              case response_page_receipt(response_value) {
+              case response_page_receipt(response_value, "Eastmoney") {
                 Error(message) -> promise.resolve(Error(message))
                 Ok(page_receipt) ->
                   case
@@ -253,13 +301,182 @@ fn fetch(provider_runtime, access, plan, id, cancellation) {
   }
 }
 
+fn eastmoney_failure_with_sina_suggestion(primary_failure: String) -> String {
+  primary_failure
+  <> "; Sina Finance is available only as a suggested CN SSE/SZSE CNY A-share alternative. Sina was not called. Ask the user and, only after the user explicitly chooses Sina, make a new cn_stock_ohlcv call with provider \"sina\""
+}
+
+fn use_sina(
+  api: pi.ExtensionApi,
+  provider: SinaProvider,
+  input: Input,
+  id: String,
+  cancellation: transport.Cancellation,
+) -> Promise(tool.ToolResult) {
+  case provider {
+    SinaInvalidConfiguration(reason) -> tool.reject(reason)
+    SinaReady(access, provider_runtime) ->
+      case sina_plan(input) {
+        Error(message) ->
+          tool.reject(
+            "Explicitly selected Sina provider is unsupported: " <> message,
+          )
+        Ok(plan) ->
+          case sina_request.history(access, plan) {
+            Error(_) -> tool.reject("Selected Sina request was invalid")
+            Ok(request_value) -> {
+              use outcome <- promise.await(sina_runtime.send(
+                provider_runtime,
+                id: id <> ":sina-explicit",
+                request: request_value,
+                cancellation: cancellation,
+              ))
+              case outcome {
+                Error(error) ->
+                  tool.reject(
+                    "Selected Sina provider failed safely: "
+                    <> string.inspect(error),
+                  )
+                Ok(response_value) ->
+                  complete_sina(api, input, plan, response_value)
+              }
+            }
+          }
+      }
+  }
+}
+
+fn sina_plan(input: Input) -> Result(sina_query.HistoryQuery, String) {
+  use venue <- result.try(case input.market {
+    query.CnSse -> Ok(sina_query.Sse)
+    query.CnSzse -> Ok(sina_query.Szse)
+    query.CnBse -> Error("Sina BSE symbol mapping is not proved")
+    query.Hk -> Error("Sina provider is CN-track only")
+  })
+  use _ <- result.try(
+    case
+      input.share_class == "a_share"
+      && currency.code(input.declared_currency) == "CNY"
+    {
+      True -> Ok(Nil)
+      False -> Error("Sina provider is proved only for CNY mainland A-shares")
+    },
+  )
+  sina_query.history(
+    finance_track.Cn,
+    venue,
+    input.code,
+    input.start_date,
+    input.end_date,
+    input.limit,
+  )
+  |> result.map_error(fn(_) { "invalid Sina CN history query" })
+}
+
+fn complete_sina(
+  api: pi.ExtensionApi,
+  input: Input,
+  plan: sina_query.HistoryQuery,
+  response_value: http_response.Response,
+) -> Promise(tool.ToolResult) {
+  let status = http_response.status(response_value)
+  case status >= 200 && status < 300 {
+    False ->
+      tool.reject(
+        "Selected Sina provider returned HTTP " <> int.to_string(status),
+      )
+    True ->
+      case
+        sina_history.decode(http_response.body(response_value), for: plan),
+        response_page_receipt(response_value, "Sina")
+      {
+        Error(_), _ ->
+          tool.reject(
+            "Selected Sina provider returned invalid, mismatched, unordered, or over-budget daily bars",
+          )
+        _, Error(message) -> tool.reject(message)
+        Ok(provider_value), Ok(page_receipt) -> {
+          let assert Ok(retrieved_at) =
+            time.instant(environment.now_milliseconds())
+          case
+            normalization.sina_batch(
+              plan,
+              provider_value,
+              retrieved_at,
+              input.declared_currency,
+            )
+          {
+            Error(error) ->
+              tool.reject(
+                "Sina rows failed exact CN OHLCV validation: "
+                <> string.inspect(error),
+              )
+            Ok(batch) ->
+              case
+                build_sina_gap_receipt(
+                  input,
+                  plan,
+                  batch,
+                  page_receipt,
+                  retrieved_at,
+                )
+              {
+                Error(message) -> tool.reject(message)
+                Ok(#(receipt, digest)) ->
+                  case
+                    sina_history_series_handoff(
+                      input,
+                      provider_value,
+                      retrieved_at,
+                      receipt,
+                    )
+                  {
+                    Error(message) -> tool.reject(message)
+                    Ok(series_value) -> {
+                      pi.append_entry(
+                        api,
+                        series_handoff.event_type,
+                        raw.dynamic(series_handoff.encode(series_value)),
+                      )
+                      tool.text_result(
+                        sina_model_content(
+                          input,
+                          provider_value,
+                          batch,
+                          retrieved_at,
+                          receipt,
+                          digest,
+                          series_value,
+                        ),
+                        sina_result_json(
+                          input,
+                          plan,
+                          provider_value,
+                          batch,
+                          retrieved_at,
+                          receipt,
+                          digest,
+                          series_value,
+                        ),
+                      )
+                      |> promise.resolve
+                    }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
 fn response_page_receipt(
   response: http_response.Response,
+  provider: String,
 ) -> Result(gap_receipt.Page, String) {
   use content_hash <- result.try(
     hash.text(http_response.body(response))
     |> result.map_error(fn(_) {
-      "Eastmoney response content could not be hashed safely"
+      provider <> " response content could not be hashed safely"
     }),
   )
   gap_receipt.page(
@@ -269,7 +486,7 @@ fn response_page_receipt(
     content_hash,
   )
   |> result.map_error(fn(_) {
-    "Eastmoney response page receipt was structurally invalid"
+    provider <> " response page receipt was structurally invalid"
   })
 }
 
@@ -280,7 +497,7 @@ fn build_gap_receipt(
   page_receipt: gap_receipt.Page,
   retrieved_at: time.Instant,
 ) -> Result(#(gap_receipt.Receipt, provenance_identity.Sha256), String) {
-  use listing <- result.try(receipt_listing(input))
+  use listing <- result.try(receipt_listing(input, "eastmoney"))
   let bar_dates =
     batch
     |> finance_ohlcv.observations
@@ -289,6 +506,7 @@ fn build_gap_receipt(
     })
   use receipt <- result.try(
     gap_receipt.new(
+      provider: "eastmoney",
       listing: listing,
       start_date: query.history_start(plan),
       end_date: query.history_end(plan),
@@ -314,10 +532,55 @@ fn build_gap_receipt(
   Ok(#(receipt, digest))
 }
 
-fn receipt_listing(input: Input) -> Result(identity.Listing, String) {
+fn build_sina_gap_receipt(
+  input: Input,
+  plan: sina_query.HistoryQuery,
+  batch: finance_ohlcv.Batch,
+  page_receipt: gap_receipt.Page,
+  retrieved_at: time.Instant,
+) -> Result(#(gap_receipt.Receipt, provenance_identity.Sha256), String) {
+  use listing <- result.try(receipt_listing(input, "sina"))
+  let bar_dates =
+    batch
+    |> finance_ohlcv.observations
+    |> list.map(fn(observation) {
+      observation.value |> finance_ohlcv.session_date
+    })
+  use receipt <- result.try(
+    gap_receipt.new(
+      provider: "sina",
+      listing: listing,
+      start_date: sina_query.history_start(plan),
+      end_date: sina_query.history_end(plan),
+      limit: sina_query.history_limit(plan),
+      source_reference: sina_query.history_source_reference(plan),
+      retrieved_at: retrieved_at,
+      pagination: receipt_pagination(finance_ohlcv.pagination(batch)),
+      pages: [page_receipt],
+      bar_dates: bar_dates,
+    )
+    |> result.map_error(fn(_) {
+      "Sina CN gap-assessment receipt was structurally invalid"
+    }),
+  )
+  use digest <- result.try(
+    receipt
+    |> gap_receipt.canonical_text
+    |> hash.text
+    |> result.map_error(fn(_) {
+      "Sina CN gap-assessment receipt could not be hashed safely"
+    }),
+  )
+  Ok(#(receipt, digest))
+}
+
+fn receipt_listing(
+  input: Input,
+  provider: String,
+) -> Result(identity.Listing, String) {
   use instrument_id <- result.try(
     identifier.instrument_id(
-      "eastmoney:" <> query.market_name(input.market) <> ":" <> input.code,
+      provider <> ":" <> query.market_name(input.market) <> ":" <> input.code,
     )
     |> result.map_error(fn(_) { "Invalid CN receipt instrument identity" }),
   )
@@ -405,6 +668,13 @@ fn input_schema() -> schema.Schema {
         |> schema.with_number_range(1.0, 1000.0)
         |> schema.described("Maximum provider rows; defaults to 250"),
     ),
+    schema.Required(
+      "provider",
+      schema.string_enum(["eastmoney", "sina"])
+        |> schema.described(
+          "Choose eastmoney normally; choose sina only in a separate call after the user explicitly accepts the suggested CN SSE/SZSE CNY A-share alternative",
+        ),
+    ),
   ])
 }
 
@@ -417,6 +687,7 @@ fn input_decoder() -> decode.Decoder(Input) {
   use start <- decode.field("startDate", decode.string)
   use end <- decode.field("endDate", decode.string)
   use limit <- decode.optional_field("limit", 250, decode.int)
+  use provider <- decode.field("provider", decode.string)
   let assert Ok(placeholder) = time.date(1970, 1, 1)
   let assert Ok(cny) = currency.from_code("CNY")
   case
@@ -435,6 +706,7 @@ fn input_decoder() -> decode.Decoder(Input) {
         start_date,
         end_date,
         limit,
+        provider_selection(provider),
       ))
     _, _, _, _ ->
       decode.failure(
@@ -447,9 +719,17 @@ fn input_decoder() -> decode.Decoder(Input) {
           placeholder,
           placeholder,
           250,
+          EastmoneySelected,
         ),
         "valid CN OHLCV identity and dates",
       )
+  }
+}
+
+fn provider_selection(value: String) -> ProviderSelection {
+  case value {
+    "sina" -> SinaSelected
+    _ -> EastmoneySelected
   }
 }
 
@@ -510,7 +790,9 @@ fn limitations() -> List(String) {
     "reviewed_cn_calendar_and_status_source_not_composed",
     "missing_sessions_are_not_classified",
     "service_level_and_redistribution_rights_unknown",
-    "no_provider_or_venue_fallback",
+    "sina_requires_explicit_user_selection_in_a_separate_call",
+    "no_automatic_provider_fallback",
+    "no_cross_track_or_venue_provider_substitution",
   ]
 }
 
@@ -542,7 +824,7 @@ fn model_content(
 ) -> String {
   summary
   <> "\nComplete bounded daily rows follow as CSV. This exact active-session series is already registered: for sma, rsi, atr, or chart_ohlcv pass only seriesReceipt with the requested calculation/chart fields. Never copy these rows into those installed tools, never use acquisitionReceipt or gapAssessmentReceiptDigest as seriesReceipt, and never manufacture an instructionRef or use a script for the handoff.\n"
-  <> "track=cn;provider=eastmoney;venue="
+  <> "dataSourceChange=none;fallbackPerformed=false;track=cn;provider=eastmoney;venue="
   <> query.market_name(input.market)
   <> ";board="
   <> input.board
@@ -595,6 +877,22 @@ fn result_json(
   json.object(
     list.append(track_json.result_fields(result_context(input)), [
       #("provider", json.string("eastmoney")),
+      #("selectedProvider", json.string("eastmoney")),
+      #("fallbackPerformed", json.bool(False)),
+      #("dataSourceChange", json.null()),
+      #(
+        "providerAttempts",
+        json.array(
+          [
+            json.object([
+              #("provider", json.string("eastmoney")),
+              #("outcome", json.string("selected")),
+              #("error", json.null()),
+            ]),
+          ],
+          fn(value) { value },
+        ),
+      ),
       #("route", json.string("direct")),
       #("venue", json.string(query.market_name(input.market))),
       #("board", json.string(input.board)),
@@ -674,6 +972,238 @@ fn result_json(
       #("limitations", json.array(limitations(), json.string)),
     ]),
   )
+}
+
+fn sina_result_context(input: Input) -> track_context.Context {
+  let assert Ok(zone) = time.timezone("Asia/Shanghai")
+  let venue = case input.market {
+    query.CnSse -> identity.Sse
+    query.CnSzse -> identity.Szse
+    query.CnBse -> identity.Bse
+    _ -> identity.Sse
+  }
+  let assert Ok(value) =
+    track_context.new(
+      track: finance_track.Cn,
+      market_scope: "cn_stock_ohlcv",
+      venue_mic: Some(identity.venue_mic(venue)),
+      board: Some(input.board),
+      timezone: Some(zone),
+      source_language: "zh-CN",
+      providers: ["sina"],
+      entitlement: "public_web_local_analysis",
+      limitations: limitations(),
+    )
+  value
+}
+
+fn sina_model_content(
+  input: Input,
+  value: sina_history.History,
+  batch: finance_ohlcv.Batch,
+  retrieved_at: time.Instant,
+  receipt: gap_receipt.Receipt,
+  receipt_digest: provenance_identity.Sha256,
+  series_value: series_handoff.Handoff,
+) -> String {
+  "DATA SOURCE CHANGED BY EXPLICIT USER CHOICE: eastmoney -> sina. No automatic fallback was performed."
+  <> "\nCN track | Sina raw daily OHLCV | "
+  <> query.market_name(input.market)
+  <> " "
+  <> sina_history.code(value)
+  <> " | "
+  <> int.to_string(list.length(finance_ohlcv.observations(batch)))
+  <> " bars | amount, volume unit, and calendar gaps unknown | "
+  <> pagination_name(finance_ohlcv.pagination(batch))
+  <> "\nComplete bounded daily rows follow as CSV. This exact active-session series is already registered: for sma, rsi, atr, or chart_ohlcv pass only seriesReceipt with the requested calculation/chart fields. Never hide or relabel the Sina source.\n"
+  <> "dataSourceChange=eastmoney->sina_by_explicit_user_choice;fallbackPerformed=false;selectionMode=explicit_user_choice;track=cn;provider=sina;venue="
+  <> query.market_name(input.market)
+  <> ";board="
+  <> input.board
+  <> ";shareClass="
+  <> input.share_class
+  <> ";code="
+  <> sina_history.code(value)
+  <> ";currency="
+  <> currency.code(input.declared_currency)
+  <> ";frequency=daily;adjustment=raw;retrievedAtUnixMilliseconds="
+  <> int.to_string(time.unix_milliseconds(retrieved_at))
+  <> ";gapAssessmentReceiptDigest="
+  <> provenance_identity.sha256_value(receipt_digest)
+  <> ";acquisitionReceipt="
+  <> provenance_identity.sha256_value(receipt_digest)
+  <> ";seriesReceipt="
+  <> series_handoff.receipt(series_value)
+  <> ";sourceReference="
+  <> gap_receipt.source_reference(receipt)
+  <> "\ndate,open,high,low,close,volume,amount\n"
+  <> {
+    sina_history.bars(value)
+    |> list.map(fn(bar) {
+      [
+        date_text(sina_history.date(bar)),
+        sina_history.open(bar),
+        sina_history.high(bar),
+        sina_history.low(bar),
+        sina_history.close(bar),
+        sina_history.volume(bar),
+        "unknown",
+      ]
+      |> string.join(",")
+    })
+    |> string.join("\n")
+  }
+}
+
+fn sina_result_json(
+  input: Input,
+  plan: sina_query.HistoryQuery,
+  provider_value: sina_history.History,
+  batch: finance_ohlcv.Batch,
+  retrieved_at: time.Instant,
+  receipt: gap_receipt.Receipt,
+  receipt_digest: provenance_identity.Sha256,
+  series_value: series_handoff.Handoff,
+) -> json.Json {
+  json.object(
+    list.append(track_json.result_fields(sina_result_context(input)), [
+      #("provider", json.string("sina")),
+      #("selectedProvider", json.string("sina")),
+      #("selectionMode", json.string("explicit_user_choice")),
+      #("fallbackPerformed", json.bool(False)),
+      #(
+        "dataSourceChange",
+        json.string("eastmoney->sina_by_explicit_user_choice"),
+      ),
+      #(
+        "providerAttempts",
+        json.array(
+          [
+            json.object([
+              #("provider", json.string("sina")),
+              #("outcome", json.string("selected")),
+              #("error", json.null()),
+            ]),
+          ],
+          fn(value) { value },
+        ),
+      ),
+      #("route", json.string("explicit_alternative")),
+      #("venue", json.string(query.market_name(input.market))),
+      #("board", json.string(input.board)),
+      #("shareClass", json.string(input.share_class)),
+      #("code", json.string(sina_history.code(provider_value))),
+      #("name", json.null()),
+      #(
+        "identityEvidence",
+        json.string("caller_declared_response_does_not_echo_identity"),
+      ),
+      #("startDate", json.string(date_text(sina_query.history_start(plan)))),
+      #("endDate", json.string(date_text(sina_query.history_end(plan)))),
+      #("interval", json.string("1_day")),
+      #("session", json.string(session_name(finance_ohlcv.session(batch)))),
+      #("sessionTimezone", json.string("Asia/Shanghai")),
+      #("currency", json.string(currency.code(finance_ohlcv.currency(batch)))),
+      #(
+        "currencyEvidence",
+        json.string("caller_declared_not_provider_verified"),
+      ),
+      #(
+        "volumeUnit",
+        json.string(volume_unit_name(finance_ohlcv.volume_unit(batch))),
+      ),
+      #("providerVolumeUnit", json.null()),
+      #("amountUnit", json.null()),
+      #(
+        "adjustment",
+        json.string(adjustment_name(finance_ohlcv.adjustment(batch))),
+      ),
+      #(
+        "retrievedAtUnixMilliseconds",
+        json.int(time.unix_milliseconds(retrieved_at)),
+      ),
+      #("pagesFetched", json.int(1)),
+      #("pagination", pagination_json(finance_ohlcv.pagination(batch))),
+      #(
+        "availability",
+        json.string(availability_name(finance_ohlcv.availability(batch))),
+      ),
+      #(
+        "duplicatesCollapsed",
+        json.int(finance_ohlcv.duplicates_collapsed(batch)),
+      ),
+      #(
+        "calendarCompleteness",
+        calendar_json(finance_ohlcv.calendar_assessment(batch)),
+      ),
+      #(
+        "gapAssessmentReceipt",
+        gap_assessment_receipt_json(receipt, receipt_digest),
+      ),
+      #("sourceReference", json.string(gap_receipt.source_reference(receipt))),
+      #(
+        "acquisitionReceipt",
+        json.string(provenance_identity.sha256_value(receipt_digest)),
+      ),
+      #("seriesReceipt", json.string(series_handoff.receipt(series_value))),
+      #(
+        "providerRows",
+        json.array(sina_history.bars(provider_value), sina_provider_row_json),
+      ),
+      #("bars", json.array(finance_ohlcv.observations(batch), bar_json)),
+      #("entitlement", json.string("public_web_local_analysis")),
+      #("redistribution", json.string("unknown")),
+      #("limitations", json.array(limitations(), json.string)),
+    ]),
+  )
+}
+
+fn sina_history_series_handoff(
+  input: Input,
+  value: sina_history.History,
+  retrieved_at: time.Instant,
+  receipt: gap_receipt.Receipt,
+) -> Result(series_handoff.Handoff, String) {
+  use mic <- result.try(case input.market {
+    query.CnSse -> Ok("XSHG")
+    query.CnSzse -> Ok("XSHE")
+    query.CnBse -> Error("Sina provider does not support BSE")
+    query.Hk -> Error("Sina provider is CN-track only")
+  })
+  let bars =
+    sina_history.bars(value)
+    |> list.map(fn(bar) {
+      series_handoff.Bar(
+        date: date_text(sina_history.date(bar)),
+        open: sina_history.open(bar),
+        high: sina_history.high(bar),
+        low: sina_history.low(bar),
+        close: sina_history.close(bar),
+        volume: sina_history.volume(bar),
+        amount: "unknown",
+      )
+    })
+  series_handoff.new(
+    track: "cn",
+    instrument_id: sina_history.code(value),
+    mic: mic,
+    timezone: "Asia/Shanghai",
+    source_language: "zh-CN",
+    price_unit: currency.code(input.declared_currency),
+    volume_unit: "provider_defined_unknown",
+    adjustment: "raw",
+    provider: "sina",
+    source_reference: gap_receipt.source_reference(receipt),
+    retrieved_at_unix_milliseconds: time.unix_milliseconds(retrieved_at),
+    source_cutoff_unix_milliseconds: None,
+    entitlement: "public_web_local_analysis",
+    limitations: limitations(),
+    bars: bars,
+  )
+  |> result.map_error(fn(error) {
+    "Sina CN OHLCV series handoff could not be created: "
+    <> series_handoff.error_message(error)
+  })
 }
 
 fn history_series_handoff(
@@ -803,6 +1333,19 @@ fn provider_row_json(value: history.Bar) -> json.Json {
     #("changePercent", json.string(history.change_percent(value))),
     #("change", json.string(history.change(value))),
     #("turnoverPercent", json.string(history.turnover_percent(value))),
+  ])
+}
+
+fn sina_provider_row_json(value: sina_history.Bar) -> json.Json {
+  json.object([
+    #("date", json.string(date_text(sina_history.date(value)))),
+    #("open", json.string(sina_history.open(value))),
+    #("close", json.string(sina_history.close(value))),
+    #("high", json.string(sina_history.high(value))),
+    #("low", json.string(sina_history.low(value))),
+    #("volume", json.string(sina_history.volume(value))),
+    #("amount", json.null()),
+    #("providerFields", json.object([])),
   ])
 }
 

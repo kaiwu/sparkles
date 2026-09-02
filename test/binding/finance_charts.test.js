@@ -147,7 +147,10 @@ async function execute(
   );
 }
 
-function receiptFixture() {
+function receiptFixture({
+  adjustment = "raw",
+  provider = "fixture-provider",
+} = {}) {
   const direct = input();
   const sourceReference = direct.context.source.sourceReference;
   const retrievedAt = direct.context.source.retrievedAtUnixMilliseconds;
@@ -167,8 +170,8 @@ function receiptFixture() {
     sourceLanguage: direct.context.sourceLanguage,
     priceUnit: direct.context.priceUnit,
     volumeUnit: direct.context.volumeUnit,
-    adjustment: "raw",
-    provider: direct.context.source.provider,
+    adjustment,
+    provider,
     sourceReference,
     acquisitionReceipt: receipt,
     retrievedAtUnixMilliseconds: retrievedAt,
@@ -241,8 +244,11 @@ describe("finance charts bundled boundary", () => {
     const tools = await harness();
     const context = tools.get("chart_ohlcv").parameters.properties.context;
 
-    expect(context.properties.adjustment.properties.label.description).toContain(
-      "use null for raw",
+    expect(
+      context.properties.adjustment.properties.label.description.toLowerCase(),
+    ).toContain("use null for raw");
+    expect(context.properties.adjustment.properties.kind.enum).toContain(
+      "provider_defined",
     );
     expect(context.properties.source.properties.entitlement.description).toContain(
       "lowercase entitlement identifier",
@@ -264,9 +270,9 @@ describe("finance charts bundled boundary", () => {
     expect(first.content[0].text).toContain("active host renders this result inline");
   });
 
-  test("resolves short active-session receipts without copied bars or indicator points", async () => {
+  test("resolves unknown-basis active-session receipts without inventing an adjustment", async () => {
     const tools = await harness();
-    const fixture = receiptFixture();
+    const fixture = receiptFixture({ adjustment: "unknown", provider: "sina" });
     const request = {
       seriesReceipt: fixture.receipt,
       maximumBars: 2,
@@ -298,6 +304,10 @@ describe("finance charts bundled boundary", () => {
     expect(result.details.trades).toEqual([]);
     expect(result.details.gaps).toEqual([]);
     expect(result.details.structuredFallback.omittedRows).toBe(0);
+    expect(result.details.adjustment).toEqual({
+      kind: "provider_defined",
+      label: "sina_source_adjustment_semantics_unknown",
+    });
   });
 
   test("retains exact decimals and mandatory structured fallback", async () => {

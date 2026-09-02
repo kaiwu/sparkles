@@ -32,8 +32,8 @@ The adapter is intentionally narrow:
 - executable, market-owned single-code mappings for revenue and parent/
   shareholder-attributable net income, plus exact source-retaining net margin;
 - exact code-response matching, 15-second/byte bounds, cancellation, one
-  request/second per host except one bounded two-request HK context/line burst,
-  one in flight, bounded queue/retries, and caller `User-Agent`;
+  request per two seconds per host across independently loaded Pi/DSH shells,
+  one in flight, bounded queues, no automatic retry, and caller `User-Agent`;
 - no code-prefix venue inference, adjustment equivalence, realtime claim,
   entitlement upgrade, or stale fallback.
 
@@ -50,7 +50,8 @@ context before typed decoding, using the same exact-token strategy as
 `finance_sec`. A runtime without that standardized source context fails the
 decoder instead of converting financial values through binary floating point.
 CN and HK request plans have separate allowlisted origins; HK retrieval uses two
-paced requests and rejects an incoherent join. No pagination, fallback, cache,
+separately admitted requests and rejects an incoherent join. No pagination,
+silent fallback, cache,
 generated report, or silent alternative mapping is hidden in this slice.
 
 Normal tests use fixed response strings and injected transports only. Live

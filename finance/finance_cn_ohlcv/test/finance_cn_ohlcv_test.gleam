@@ -124,6 +124,28 @@ pub fn cn_canonical_receipt_binds_market_identity_page_and_bar_dates_test() {
   gap_receipt.pagination(first) |> should.equal(gap_receipt.Complete)
 }
 
+pub fn cn_receipt_binds_explicit_supported_provider_test() {
+  let assert Ok(hash_value) = provenance_identity.sha256(string.repeat("c", 64))
+  let assert Ok(page) = gap_receipt.page(1, None, 500, hash_value)
+  let receipt = fn(provider) {
+    gap_receipt.new(
+      provider: provider,
+      listing: listing(),
+      start_date: civil(2026, 6, 18),
+      end_date: civil(2026, 6, 24),
+      limit: 250,
+      source_reference: source_reference(),
+      retrieved_at: instant(1_775_000_000_000),
+      pagination: gap_receipt.Complete,
+      pages: [page],
+      bar_dates: [civil(2026, 6, 18)],
+    )
+  }
+  let assert Ok(sina) = receipt("sina")
+  gap_receipt.provider(sina) |> should.equal("sina")
+  receipt("automatic") |> should.equal(Error(gap_receipt.InvalidProvider))
+}
+
 fn listing_receipt(starts: time.Date) -> assessment.ListingReceipt {
   let listing = listing()
   let assert Ok(interval) = effective.new(starts, None)
@@ -171,6 +193,7 @@ fn gap_projection(
   let assert Ok(page) = gap_receipt.page(1, None, 500, hash_value)
   let assert Ok(value) =
     gap_receipt.new(
+      provider: "eastmoney",
       listing: listing(),
       start_date: civil(2026, 6, 18),
       end_date: civil(2026, 6, 24),

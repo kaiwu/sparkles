@@ -86,7 +86,9 @@ unperformed outputs; the tool never substitutes `sma_partial_v1`, skips slots,
 or imputes values.
 
 The preferred history path passes `seriesReceipt`; the shell maps its exact
-close lexemes to ordered observations. Direct external inputs may instead pass
+close lexemes to ordered observations. A source receipt whose adjustment
+semantics are explicitly `unknown` remains a labeled `provider_defined` basis;
+the calculator does not relabel it as raw or adjusted. Direct external inputs may instead pass
 ordered `observations` containing a date and exact numeric fact. Both paths
 accept at most 2,000 observations per call.
 

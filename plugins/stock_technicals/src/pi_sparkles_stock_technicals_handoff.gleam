@@ -181,6 +181,18 @@ fn stock_context(
   let #(date_start, date_end) = dates
   use basis <- result.try(case series_handoff.adjustment(value) {
     "raw" -> Ok(decode.BasisInput("raw", None, None, []))
+    "unknown" ->
+      Ok(
+        decode.BasisInput(
+          "provider_defined",
+          Some(
+            series_handoff.provider(value)
+            <> "_source_adjustment_semantics_unknown",
+          ),
+          None,
+          [],
+        ),
+      )
     other -> Error("Unsupported session-bound OHLCV adjustment " <> other)
   })
   let receipt = series_handoff.receipt(value)

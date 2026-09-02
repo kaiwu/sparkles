@@ -32,7 +32,7 @@ pub fn extension(api: pi.ExtensionApi) -> Promise(Nil) {
     api,
     "cn_ohlcv_gap_assessment",
     "CN OHLCV gap assessment",
-    "Classify every absent date in one SHA-256-bound copied Eastmoney mainland daily-bar projection using the exact 2026 SSE, SZSE, or BSE calendar, an independently repeated caller listing identity, explicit status receipts, and complete provider coverage",
+    "Classify every absent date in one SHA-256-bound copied Eastmoney or Sina mainland daily-bar projection using the exact 2026 SSE, SZSE, or BSE calendar, an independently repeated caller listing identity, explicit status receipts, and complete provider coverage",
     "Compose bounded mainland OHLCV evidence without fetching data, crossing tracks or venues, synthesizing bars, or guessing closures, suspensions, provider omissions, or unavailable history",
     tool.parameters(input_schema(), input_decoder()),
     tool.Parallel,
@@ -96,7 +96,7 @@ fn provider_receipt_schema() -> schema.Schema {
       schema.string_enum([gap_receipt.digest_algorithm]),
     ),
     schema.Required("digest", bounded_string(64, 64)),
-    schema.Required("provider", schema.string_enum(["eastmoney"])),
+    schema.Required("provider", schema.string_enum(["eastmoney", "sina"])),
     schema.Required("venue", schema.string_enum(["sse", "szse", "bse"])),
     schema.Required(
       "board",
@@ -568,7 +568,7 @@ fn limitations() -> List(String) {
     "listing_and_status_evidence_is_caller_supplied_and_not_authority_verified",
     "sha256_content_match_is_not_a_provider_signature_or_authentication",
     "digest_scope_is_the_gap_projection_not_full_bar_value_replay",
-    "eastmoney_origin_is_vendor_not_exchange_evidence",
+    "market_data_vendor_origin_is_not_exchange_evidence",
     "official_planned_calendar_may_be_superseded_by_exchange_alerts",
     "calendar_year_2026_only",
     "provider_omission_requires_complete_coverage_and_explicit_trading_status",
@@ -600,8 +600,10 @@ fn error_message(value: query.QueryError) -> String {
       "The independent CN listing identity does not match the provider projection"
     query.InvalidProviderPlan(_) ->
       "The copied Eastmoney CN range, code, venue, or row limit is invalid"
+    query.InvalidSinaProviderPlan(_) ->
+      "The copied Sina CN range, code, venue, or row limit is invalid"
     query.SourceReferenceMismatch ->
-      "The copied Eastmoney sourceReference does not match the exact receipt identity"
+      "The copied provider sourceReference does not match the exact receipt identity"
     query.InvalidProviderReceipt(_) ->
       "The copied provider receipt contains invalid or duplicate evidence"
     query.InvalidStatusReceipt(_, _) ->

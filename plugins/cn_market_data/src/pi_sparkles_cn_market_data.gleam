@@ -12,6 +12,11 @@ import finance_http/transport
 import finance_ohlcv/series_handoff
 import finance_provenance/hash
 import finance_provenance/identity as provenance_identity
+import finance_sina
+import finance_sina/history as sina_history
+import finance_sina/query as sina_query
+import finance_sina/request as sina_request
+import finance_sina/runtime as sina_runtime
 import finance_track
 import finance_track/context as track_context
 import finance_track/json as track_json
@@ -51,20 +56,32 @@ pub type HistoryInput {
     end_date: time.Date,
     limit: Int,
     instrument_kind: InstrumentKind,
+    provider: HistoryProvider,
   )
+}
+
+pub type HistoryProvider {
+  EastmoneyHistory
+  SinaHistory
 }
 
 pub type MoversInput {
   MoversInput(limit: Int)
 }
 
-type Provider {
+type EastmoneyProvider {
   Ready(access: finance_eastmoney.Access, runtime: runtime.Runtime)
   InvalidConfiguration(reason: String)
 }
 
+type SinaProvider {
+  SinaReady(access: finance_sina.Access, runtime: sina_runtime.Runtime)
+  SinaInvalidConfiguration(reason: String)
+}
+
 pub fn extension(api: pi.ExtensionApi) -> Promise(Nil) {
-  let provider = provider()
+  let eastmoney = provider()
+  let sina = sina_provider()
   tool.register_compact(
     api,
     "cn_market_movers",
@@ -74,7 +91,7 @@ pub fn extension(api: pi.ExtensionApi) -> Promise(Nil) {
     tool.parameters(movers_schema(), movers_decoder()),
     tool.Parallel,
     fn(id, input, signal, _updates, _ctx) {
-      case provider {
+      case eastmoney {
         InvalidConfiguration(reason) -> tool.reject(reason)
         Ready(access, provider_runtime) ->
           case query.cn_movers(finance_track.Cn, input.limit) {
@@ -119,7 +136,7 @@ pub fn extension(api: pi.ExtensionApi) -> Promise(Nil) {
     tool.parameters(quote_schema(), quote_decoder()),
     tool.Parallel,
     fn(id, input, signal, _updates, _ctx) {
-      case provider {
+      case eastmoney {
         InvalidConfiguration(reason) -> tool.reject(reason)
         Ready(access, provider_runtime) ->
           case
@@ -173,125 +190,75 @@ pub fn extension(api: pi.ExtensionApi) -> Promise(Nil) {
     api,
     "cn_raw_vendor_history",
     "CN raw vendor history",
-    "Fetch bounded Eastmoney raw unadjusted daily bars for an exact caller-identified SSE/SZSE/BSE listed security, reviewed benchmark index, or reviewed CSI sector index",
-    "Use for one exact series only. Label reviewed indices explicitly; use cn_market_overview for the current broad market and cn_sector_series followed by compare_series_returns for sector comparisons instead of guessing or probing codes",
+    "Fetch one bounded CN raw daily-history series for a listed security, reviewed benchmark, or reviewed CSI sector index from the explicitly selected provider; use Eastmoney normally, and use Sina only in a separate call after the user explicitly accepts the suggested alternative for the reviewed SSE STAR 50 index",
+    "For SSE STAR 50 history select provider eastmoney first; if it fails, report the Sina suggestion and ask the user before a separate provider sina call. Never automatically fall back. Other reviewed benchmark and reviewed CSI sector index histories remain Eastmoney-only",
     tool.parameters(history_schema(), history_decoder()),
     tool.Parallel,
     fn(id, input, signal, _updates, _ctx) {
-      case provider {
-        InvalidConfiguration(reason) -> tool.reject(reason)
-        Ready(access, provider_runtime) ->
-          case
+      case
+        input.instrument_kind,
+        reviewed_benchmark(input.market, input.code),
+        reviewed_sector(input.market, input.code)
+      {
+        BenchmarkIndex, True, True | SectorIndex, True, True ->
+          reject_input(
+            "conflicting_index_identity",
+            "Instrument code matched conflicting reviewed index registries",
+            input.market,
+            input.code,
             input.instrument_kind,
-            reviewed_benchmark(input.market, input.code),
-            reviewed_sector(input.market, input.code)
-          {
-            BenchmarkIndex, True, True | SectorIndex, True, True ->
-              reject_input(
-                "conflicting_index_identity",
-                "Instrument code matched conflicting reviewed index registries",
-                input.market,
-                input.code,
-                input.instrument_kind,
-              )
-            ListedSecurity, True, _ ->
-              reject_input(
-                "instrument_kind_mismatch",
-                "Reviewed benchmark code requires instrumentKind=benchmark_index for daily history or cn_market_overview for the current market",
-                input.market,
-                input.code,
-                BenchmarkIndex,
-              )
-            ListedSecurity, _, True ->
-              reject_input(
-                "instrument_kind_mismatch",
-                "Reviewed CSI sector code requires instrumentKind=sector_index for one exact history series or cn_sector_series for the acquisition leg of a complete comparison",
-                input.market,
-                input.code,
-                SectorIndex,
-              )
-            BenchmarkIndex, False, _ ->
-              reject_input(
-                "unsupported_index_identity",
-                "benchmark_index is limited to the exact reviewed benchmark registry",
-                input.market,
-                input.code,
-                BenchmarkIndex,
-              )
-            SectorIndex, _, False ->
-              reject_input(
-                "unsupported_sector_identity",
-                "sector_index is limited to the exact pinned CSI 800 level-one registry; use cn_sector_series followed by compare_series_returns for the complete comparison",
-                input.market,
-                input.code,
-                SectorIndex,
-              )
-            ListedSecurity, False, False
-            | BenchmarkIndex, True, False
-            | SectorIndex, False, True
-            ->
-              case
-                query.history(
-                  finance_track.Cn,
-                  input.market,
-                  input.code,
-                  input.start_date,
-                  input.end_date,
-                  input.limit,
-                )
-              {
-                Error(_) ->
-                  reject_input(
-                    "invalid_history_identity",
-                    "Invalid explicit CN Eastmoney history identity",
-                    input.market,
-                    input.code,
-                    input.instrument_kind,
-                  )
-                Ok(plan) -> {
-                  use outcome <- promise.await(fetch_history(
-                    provider_runtime,
-                    access,
-                    plan,
-                    id,
-                    transport.from_abort_signal(raw.dynamic(signal)),
-                  ))
-                  case outcome {
-                    Error(message) ->
-                      reject_input(
-                        "provider_history_failed",
-                        message,
-                        input.market,
-                        input.code,
-                        input.instrument_kind,
-                      )
-                    Ok(value) -> {
-                      let retrieved_at = environment.now_milliseconds()
-                      let handoff =
-                        history_series_handoff(input, value, retrieved_at)
-                      pi.append_entry(
-                        api,
-                        series_handoff.event_type,
-                        raw.dynamic(series_handoff.encode(handoff)),
-                      )
-                      let details = history_json(input, value, retrieved_at)
-                      tool.text_result(
-                        history_model_content(input, value, retrieved_at),
-                        details,
-                      )
-                      |> promise.resolve
-                    }
-                  }
-                }
-              }
-          }
+          )
+        ListedSecurity, True, _ ->
+          reject_input(
+            "instrument_kind_mismatch",
+            "Reviewed benchmark code requires instrumentKind=benchmark_index for daily history or cn_market_overview for the current market",
+            input.market,
+            input.code,
+            BenchmarkIndex,
+          )
+        ListedSecurity, _, True ->
+          reject_input(
+            "instrument_kind_mismatch",
+            "Reviewed CSI sector code requires instrumentKind=sector_index for one exact history series or cn_sector_series for the acquisition leg of a complete comparison",
+            input.market,
+            input.code,
+            SectorIndex,
+          )
+        BenchmarkIndex, False, _ ->
+          reject_input(
+            "unsupported_index_identity",
+            "benchmark_index is limited to the exact reviewed benchmark registry",
+            input.market,
+            input.code,
+            BenchmarkIndex,
+          )
+        SectorIndex, _, False ->
+          reject_input(
+            "unsupported_sector_identity",
+            "sector_index is limited to the exact pinned CSI 800 level-one registry; use cn_sector_series followed by compare_series_returns for the complete comparison",
+            input.market,
+            input.code,
+            SectorIndex,
+          )
+        ListedSecurity, False, False
+        | BenchmarkIndex, True, False
+        | SectorIndex, False, True
+        ->
+          execute_history(
+            api,
+            eastmoney,
+            sina,
+            input,
+            id,
+            transport.from_abort_signal(raw.dynamic(signal)),
+          )
       }
     },
   )
   promise.resolve(Nil)
 }
 
-fn provider() -> Provider {
+fn provider() -> EastmoneyProvider {
   case finance_eastmoney.access(environment.product(), environment.contact()) {
     Error(_) ->
       InvalidConfiguration(
@@ -306,6 +273,439 @@ fn provider() -> Provider {
           )
       }
   }
+}
+
+fn sina_provider() -> SinaProvider {
+  case finance_sina.access(environment.product(), environment.contact()) {
+    Error(_) ->
+      SinaInvalidConfiguration("Selected Sina provider requires AGENT_CONTACT")
+    Ok(access) ->
+      case sina_runtime.new(access) {
+        Ok(value) -> SinaReady(access, value)
+        Error(_) ->
+          SinaInvalidConfiguration(
+            "Selected Sina bounded runtime could not initialize safely",
+          )
+      }
+  }
+}
+
+fn execute_history(
+  api: pi.ExtensionApi,
+  eastmoney: EastmoneyProvider,
+  sina: SinaProvider,
+  input: HistoryInput,
+  id: String,
+  cancellation: transport.Cancellation,
+) -> Promise(tool.ToolResult) {
+  case input.provider {
+    EastmoneyHistory ->
+      case eastmoney {
+        InvalidConfiguration(reason) ->
+          reject_eastmoney_history_failure(input, reason)
+        Ready(access, provider_runtime) ->
+          case
+            query.history(
+              finance_track.Cn,
+              input.market,
+              input.code,
+              input.start_date,
+              input.end_date,
+              input.limit,
+            )
+          {
+            Error(_) ->
+              reject_input(
+                "invalid_history_identity",
+                "Invalid explicit CN Eastmoney history identity",
+                input.market,
+                input.code,
+                input.instrument_kind,
+              )
+            Ok(plan) -> {
+              use outcome <- promise.await(fetch_history(
+                provider_runtime,
+                access,
+                plan,
+                id,
+                cancellation,
+              ))
+              case outcome {
+                Error(message) ->
+                  reject_eastmoney_history_failure(input, message)
+                Ok(value) -> complete_eastmoney_history(api, input, value)
+              }
+            }
+          }
+      }
+    SinaHistory -> execute_sina_history(api, sina, input, id, cancellation)
+  }
+}
+
+fn complete_eastmoney_history(
+  api: pi.ExtensionApi,
+  input: HistoryInput,
+  value: history.History,
+) -> Promise(tool.ToolResult) {
+  let retrieved_at = environment.now_milliseconds()
+  let handoff = history_series_handoff(input, value, retrieved_at)
+  pi.append_entry(
+    api,
+    series_handoff.event_type,
+    raw.dynamic(series_handoff.encode(handoff)),
+  )
+  tool.text_result(
+    history_model_content(input, value, retrieved_at),
+    history_json(input, value, retrieved_at),
+  )
+  |> promise.resolve
+}
+
+fn reject_eastmoney_history_failure(
+  input: HistoryInput,
+  message: String,
+) -> Promise(value) {
+  case sina_star50_supported(input) {
+    False ->
+      reject_input(
+        "provider_history_failed",
+        message,
+        input.market,
+        input.code,
+        input.instrument_kind,
+      )
+    True ->
+      tool.reject_typed(
+        "provider_history_failed_sina_available",
+        message
+          <> "; Sina Finance is available only as a suggested alternative for this reviewed SSE STAR 50 history. Sina was not called. Ask the user and, only after the user explicitly chooses Sina, make a new cn_raw_vendor_history call with the same identity, date window, and limit and provider \"sina\"",
+        json.object([
+          #("code", json.string("provider_history_failed_sina_available")),
+          #("track", json.string("cn")),
+          #("market", json.string(query.market_name(input.market))),
+          #("instrumentCode", json.string(input.code)),
+          #("instrumentKind", json.string("benchmark_index")),
+          #("failedProvider", json.string("eastmoney")),
+          #("suggestedProvider", json.string("sina")),
+          #("sinaCalled", json.bool(False)),
+          #("automaticFallbackAllowed", json.bool(False)),
+          #("requiresExplicitUserChoice", json.bool(True)),
+          #("recommendedTool", json.string("cn_raw_vendor_history")),
+        ]),
+      )
+  }
+}
+
+fn execute_sina_history(
+  api: pi.ExtensionApi,
+  provider: SinaProvider,
+  input: HistoryInput,
+  id: String,
+  cancellation: transport.Cancellation,
+) -> Promise(tool.ToolResult) {
+  case sina_star50_supported(input) {
+    False ->
+      reject_input(
+        "unsupported_sina_history_identity",
+        "Sina history is proved here only for the reviewed SSE STAR 50 benchmark index 000688; use cn_stock_ohlcv for an explicitly selected Sina SSE/SZSE CNY A-share request",
+        input.market,
+        input.code,
+        input.instrument_kind,
+      )
+    True ->
+      case provider {
+        SinaInvalidConfiguration(reason) -> tool.reject(reason)
+        SinaReady(access, provider_runtime) ->
+          case sina_history_plan(input) {
+            Error(message) -> tool.reject(message)
+            Ok(plan) -> {
+              use outcome <- promise.await(fetch_sina_history(
+                provider_runtime,
+                access,
+                plan,
+                id <> ":sina-explicit",
+                cancellation,
+              ))
+              case outcome {
+                Error(message) ->
+                  reject_input(
+                    "sina_provider_history_failed",
+                    message,
+                    input.market,
+                    input.code,
+                    input.instrument_kind,
+                  )
+                Ok(value) -> complete_sina_history(api, input, plan, value)
+              }
+            }
+          }
+      }
+  }
+}
+
+fn sina_star50_supported(input: HistoryInput) -> Bool {
+  input.market == query.CnSse
+  && input.code == "000688"
+  && input.instrument_kind == BenchmarkIndex
+}
+
+fn sina_history_plan(
+  input: HistoryInput,
+) -> Result(sina_query.HistoryQuery, String) {
+  sina_query.history(
+    finance_track.Cn,
+    sina_query.Sse,
+    input.code,
+    input.start_date,
+    input.end_date,
+    input.limit,
+  )
+  |> result.map_error(fn(_) { "Invalid explicit Sina STAR 50 history query" })
+}
+
+fn fetch_sina_history(
+  provider_runtime: sina_runtime.Runtime,
+  access: finance_sina.Access,
+  plan: sina_query.HistoryQuery,
+  id: String,
+  cancellation: transport.Cancellation,
+) -> Promise(Result(sina_history.History, String)) {
+  case sina_request.history(access, plan) {
+    Error(_) ->
+      promise.resolve(Error("Selected Sina history request was invalid"))
+    Ok(request) -> {
+      use outcome <- promise.await(sina_runtime.send(
+        provider_runtime,
+        id: id,
+        request: request,
+        cancellation: cancellation,
+      ))
+      case outcome {
+        Error(error) ->
+          promise.resolve(Error(
+            "Selected Sina history request failed safely without retry: "
+            <> string.inspect(error),
+          ))
+        Ok(response) -> {
+          let status = http_response.status(response)
+          case status >= 200 && status < 300 {
+            False ->
+              promise.resolve(Error(
+                "Selected Sina history request returned HTTP "
+                <> int.to_string(status)
+                <> " without retry",
+              ))
+            True ->
+              case
+                sina_history.decode(http_response.body(response), for: plan)
+              {
+                Ok(value) -> promise.resolve(Ok(value))
+                Error(_) ->
+                  promise.resolve(Error(
+                    "Selected Sina history returned invalid, mismatched, unordered, empty, or over-budget daily bars",
+                  ))
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn complete_sina_history(
+  api: pi.ExtensionApi,
+  input: HistoryInput,
+  plan: sina_query.HistoryQuery,
+  value: sina_history.History,
+) -> Promise(tool.ToolResult) {
+  let retrieved_at = environment.now_milliseconds()
+  case sina_history_series_handoff(input, plan, value, retrieved_at) {
+    Error(message) -> tool.reject(message)
+    Ok(handoff) -> {
+      pi.append_entry(
+        api,
+        series_handoff.event_type,
+        raw.dynamic(series_handoff.encode(handoff)),
+      )
+      tool.text_result(
+        sina_history_model_content(input, plan, value, retrieved_at, handoff),
+        sina_history_json(input, plan, value, retrieved_at, handoff),
+      )
+      |> promise.resolve
+    }
+  }
+}
+
+fn sina_history_series_handoff(
+  input: HistoryInput,
+  plan: sina_query.HistoryQuery,
+  value: sina_history.History,
+  retrieved_at: Int,
+) -> Result(series_handoff.Handoff, String) {
+  let bars =
+    sina_history.bars(value)
+    |> list.map(fn(bar) {
+      series_handoff.Bar(
+        date: date_text(sina_history.date(bar)),
+        open: sina_history.open(bar),
+        high: sina_history.high(bar),
+        low: sina_history.low(bar),
+        close: sina_history.close(bar),
+        volume: sina_history.volume(bar),
+        amount: "unknown",
+      )
+    })
+  series_handoff.new(
+    track: "cn",
+    instrument_id: sina_history.code(value),
+    mic: market_mic(input.market),
+    timezone: "Asia/Shanghai",
+    source_language: "zh-CN",
+    price_unit: "index_points",
+    volume_unit: "provider_defined_unknown",
+    adjustment: "unknown",
+    provider: "sina",
+    source_reference: sina_query.history_source_reference(plan),
+    retrieved_at_unix_milliseconds: retrieved_at,
+    source_cutoff_unix_milliseconds: None,
+    entitlement: "public_web_local_analysis",
+    limitations: limitations(),
+    bars: bars,
+  )
+  |> result.map_error(fn(error) {
+    "Sina STAR 50 series handoff could not be created: "
+    <> series_handoff.error_message(error)
+  })
+}
+
+fn sina_history_model_content(
+  input: HistoryInput,
+  plan: sina_query.HistoryQuery,
+  value: sina_history.History,
+  retrieved_at: Int,
+  handoff: series_handoff.Handoff,
+) -> String {
+  "DATA SOURCE CHANGED BY EXPLICIT USER CHOICE: eastmoney -> sina. No automatic fallback was performed."
+  <> "\nCN track | Sina raw daily STAR 50 history | "
+  <> query.market_name(input.market)
+  <> " "
+  <> sina_history.code(value)
+  <> " | "
+  <> int.to_string(list.length(sina_history.bars(value)))
+  <> " bars | benchmark identity is bound to the reviewed registry; amount, volume unit, adjustment semantics, and calendar completeness remain unknown"
+  <> "\nComplete bounded daily rows follow as CSV. This exact active-session series is already registered: for sma, rsi, atr, or chart_ohlcv pass only seriesReceipt with the requested calculation/chart fields. Receipt consumers preserve the unknown adjustment semantics as provider_defined (sina_source_adjustment_semantics_unknown); this does not establish raw or adjusted prices. Never hide or relabel the Sina source.\n"
+  <> "dataSourceChange=eastmoney->sina_by_explicit_user_choice;fallbackPerformed=false;selectionMode=explicit_user_choice;track=cn;provider=sina;market="
+  <> query.market_name(input.market)
+  <> ";code="
+  <> sina_history.code(value)
+  <> ";instrumentKind=benchmark_index;priceUnit=index_points;frequency=daily;adjustment=unknown;retrievedAtUnixMilliseconds="
+  <> int.to_string(retrieved_at)
+  <> ";providerWindowTruncated="
+  <> bool_text(sina_history.provider_window_truncated(value))
+  <> ";sourceReference="
+  <> sina_query.history_source_reference(plan)
+  <> ";acquisitionReceiptCanonicalSha256="
+  <> series_handoff.receipt(handoff)
+  <> ";seriesReceipt="
+  <> series_handoff.receipt(handoff)
+  <> ";seriesHandoff=session_bound_v1_use_receipt_for_sma_rsi_atr_chart"
+  <> "\ndate,open,high,low,close,volume,amount\n"
+  <> series_handoff.csv_rows(handoff)
+}
+
+fn sina_history_json(
+  input: HistoryInput,
+  plan: sina_query.HistoryQuery,
+  value: sina_history.History,
+  retrieved_at: Int,
+  handoff: series_handoff.Handoff,
+) -> json.Json {
+  json.object(
+    list.append(
+      track_json.result_fields(result_context_for_provider(
+        input.market,
+        "cn_raw_vendor_history",
+        "sina",
+      )),
+      [
+        #("provider", json.string("sina")),
+        #("selectedProvider", json.string("sina")),
+        #("selectionMode", json.string("explicit_user_choice")),
+        #("fallbackPerformed", json.bool(False)),
+        #(
+          "dataSourceChange",
+          json.string("eastmoney->sina_by_explicit_user_choice"),
+        ),
+        #(
+          "providerAttempts",
+          json.array(
+            [
+              json.object([
+                #("provider", json.string("sina")),
+                #("outcome", json.string("selected")),
+                #("error", json.null()),
+              ]),
+            ],
+            fn(value) { value },
+          ),
+        ),
+        #("route", json.string("explicit_alternative")),
+        #("market", json.string(query.market_name(input.market))),
+        #("code", json.string(sina_history.code(value))),
+        #("instrumentKind", json.string("benchmark_index")),
+        #("name", json.null()),
+        #(
+          "identityEvidence",
+          json.string("reviewed_registry_response_does_not_echo_identity"),
+        ),
+        #("startDate", json.string(date_text(sina_query.history_start(plan)))),
+        #("endDate", json.string(date_text(sina_query.history_end(plan)))),
+        #("frequency", json.string("daily")),
+        #("priceUnit", json.string("index_points")),
+        #("declaredCurrency", json.null()),
+        #("volumeUnit", json.null()),
+        #("amountUnit", json.null()),
+        #("adjustment", json.string("unknown")),
+        #("retrievedAtUnixMilliseconds", json.int(retrieved_at)),
+        #(
+          "providerWindowTruncated",
+          json.bool(sina_history.provider_window_truncated(value)),
+        ),
+        #(
+          "sourceReference",
+          json.string(sina_query.history_source_reference(plan)),
+        ),
+        #(
+          "acquisitionReceipt",
+          json.object([
+            #("canonicalSha256", json.string(series_handoff.receipt(handoff))),
+            #("scope", json.string("bounded_raw_daily_csv_v1")),
+            #("providerAuthenticated", json.bool(False)),
+            #("logicalProviderRequestCount", json.int(1)),
+            #("transportAttemptCount", json.int(1)),
+            #("retryAllowed", json.bool(False)),
+          ]),
+        ),
+        #("seriesReceipt", json.string(series_handoff.receipt(handoff))),
+        #("bars", json.array(sina_history.bars(value), sina_bar_json)),
+        #("entitlement", json.string("public_web_local_analysis")),
+        #("redistribution", json.string("unknown")),
+        #("limitations", json.array(limitations(), json.string)),
+      ],
+    ),
+  )
+}
+
+fn sina_bar_json(value: sina_history.Bar) -> json.Json {
+  json.object([
+    #("date", json.string(date_text(sina_history.date(value)))),
+    #("open", json.string(sina_history.open(value))),
+    #("close", json.string(sina_history.close(value))),
+    #("high", json.string(sina_history.high(value))),
+    #("low", json.string(sina_history.low(value))),
+    #("volume", json.string(sina_history.volume(value))),
+    #("amount", json.null()),
+  ])
 }
 
 fn fetch_quote(provider_runtime, access, plan, id, cancellation) {
@@ -450,6 +850,13 @@ fn quote_schema() -> schema.Schema {
 
 fn history_schema() -> schema.Schema {
   schema.object([
+    schema.Required(
+      "provider",
+      schema.string_enum(["eastmoney", "sina"])
+        |> schema.described(
+          "Choose eastmoney normally; choose sina only in a separate call after the user explicitly accepts the suggested SSE STAR 50 alternative",
+        ),
+    ),
     schema.Required("venue", schema.string_enum(["sse", "szse", "bse"])),
     schema.Required("code", schema.string() |> schema.with_string_length(6, 6)),
     schema.Optional(
@@ -515,6 +922,7 @@ fn quote_decoder() -> decode.Decoder(QuoteInput) {
 }
 
 fn history_decoder() -> decode.Decoder(HistoryInput) {
+  use provider <- decode.field("provider", decode.string)
   use venue <- decode.field("venue", decode.string)
   use code <- decode.field("code", decode.string)
   use kind <- decode.optional_field(
@@ -530,9 +938,15 @@ fn history_decoder() -> decode.Decoder(HistoryInput) {
     market_from_name(venue),
     parse_date(start),
     parse_date(end),
-    instrument_kind_from_name(kind)
+    instrument_kind_from_name(kind),
+    history_provider_from_name(provider)
   {
-    Ok(market), Ok(start_date), Ok(end_date), Ok(instrument_kind) ->
+    Ok(market),
+      Ok(start_date),
+      Ok(end_date),
+      Ok(instrument_kind),
+      Ok(history_provider)
+    ->
       decode.success(HistoryInput(
         market,
         code,
@@ -540,8 +954,9 @@ fn history_decoder() -> decode.Decoder(HistoryInput) {
         end_date,
         limit,
         instrument_kind,
+        history_provider,
       ))
-    _, _, _, _ ->
+    _, _, _, _, _ ->
       decode.failure(
         HistoryInput(
           query.CnSse,
@@ -550,9 +965,18 @@ fn history_decoder() -> decode.Decoder(HistoryInput) {
           placeholder,
           250,
           ListedSecurity,
+          EastmoneyHistory,
         ),
         "valid CN history query",
       )
+  }
+}
+
+fn history_provider_from_name(value: String) -> Result(HistoryProvider, Nil) {
+  case value {
+    "eastmoney" -> Ok(EastmoneyHistory)
+    "sina" -> Ok(SinaHistory)
+    _ -> Error(Nil)
   }
 }
 
@@ -670,6 +1094,14 @@ fn result_context(
   market: query.Market,
   scope: String,
 ) -> track_context.Context {
+  result_context_for_provider(market, scope, "eastmoney")
+}
+
+fn result_context_for_provider(
+  market: query.Market,
+  scope: String,
+  provider: String,
+) -> track_context.Context {
   let venue = case market {
     query.CnSse -> identity.Sse
     query.CnSzse -> identity.Szse
@@ -685,7 +1117,7 @@ fn result_context(
       board: None,
       timezone: Some(zone),
       source_language: "zh-CN",
-      providers: ["eastmoney"],
+      providers: [provider],
       entitlement: "public_web_local_analysis",
       limitations: limitations(),
     )
@@ -916,7 +1348,7 @@ fn history_model_content(
   <> history.code(value)
   <> ";instrumentKind="
   <> instrument_kind_name(input.instrument_kind)
-  <> ";currency=CNY;frequency=daily;adjustment=raw_unadjusted_fqt_0;retrievedAtUnixMilliseconds="
+  <> ";dataSourceChange=none;fallbackPerformed=false;selectionMode=explicit_provider;currency=CNY;frequency=daily;adjustment=raw_unadjusted_fqt_0;retrievedAtUnixMilliseconds="
   <> int.to_string(retrieved_at)
   <> ";sourceReference="
   <> source_reference
@@ -1013,6 +1445,23 @@ fn quote_json(
       )),
       [
         #("provider", json.string("eastmoney")),
+        #("selectedProvider", json.string("eastmoney")),
+        #("selectionMode", json.string("explicit_provider")),
+        #("fallbackPerformed", json.bool(False)),
+        #("dataSourceChange", json.null()),
+        #(
+          "providerAttempts",
+          json.array(
+            [
+              json.object([
+                #("provider", json.string("eastmoney")),
+                #("outcome", json.string("selected")),
+                #("error", json.null()),
+              ]),
+            ],
+            fn(value) { value },
+          ),
+        ),
         #("route", json.string("direct")),
         #("market", json.string(query.market_name(input.market))),
         #("code", json.string(quote.code(value))),
@@ -1119,5 +1568,12 @@ fn two_digits(value: Int) -> String {
   case value < 10 {
     True -> "0" <> int.to_string(value)
     False -> int.to_string(value)
+  }
+}
+
+fn bool_text(value: Bool) -> String {
+  case value {
+    True -> "true"
+    False -> "false"
   }
 }

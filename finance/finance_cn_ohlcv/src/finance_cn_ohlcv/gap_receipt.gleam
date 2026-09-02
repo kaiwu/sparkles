@@ -34,6 +34,7 @@ pub opaque type Receipt {
 }
 
 pub type ReceiptError {
+  InvalidProvider
   InvalidLimit
   InvalidCanonicalReceipt(acquisition_receipt.ReceiptError)
 }
@@ -54,6 +55,7 @@ pub fn page(
 }
 
 pub fn new(
+  provider provider_value: String,
   listing listing_value: cn_identity.Listing,
   start_date start: Date,
   end_date end: Date,
@@ -64,6 +66,10 @@ pub fn new(
   pages page_values: List(Page),
   bar_dates dates: List(Date),
 ) -> Result(Receipt, ReceiptError) {
+  use _ <- result.try(case provider_value {
+    "eastmoney" | "sina" -> Ok(Nil)
+    _ -> Error(InvalidProvider)
+  })
   use _ <- result.try(case limit_value >= 1 && limit_value <= 1000 {
     True -> Ok(Nil)
     False -> Error(InvalidLimit)
@@ -79,7 +85,7 @@ pub fn new(
       schema: schema_name,
       schema_version: schema_version,
       track: finance_track.Cn,
-      provider: "eastmoney",
+      provider: provider_value,
       identity: fields,
       source_reference: source_value,
       retrieved_at: retrieved,

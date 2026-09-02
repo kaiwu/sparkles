@@ -44,6 +44,34 @@ describe("functional architecture", () => {
     }
   });
 
+  test("every concrete provider transport uses the shared limiter", () => {
+    for (const pkg of discoverPackages(FINANCE_DIR)) {
+      if (pkg.shortName === "finance_http") continue;
+      for (const path of filesBelow(join(pkg.directory, "src"), ".gleam")) {
+        const gleam = source(path);
+        expect(
+          /\b(?:binary_)?client\.new_default\b/.test(gleam),
+          `${display(path)} must not bypass provider admission`,
+        ).toBeFalse();
+        if (!gleam.includes("transport.send")) continue;
+        expect(
+          /^import finance_http\/limiter(?:\s|\.|$)/m.test(gleam),
+          display(path),
+        ).toBeTrue();
+        expect(
+          /\blimiter\.admit\s*\(/.test(gleam),
+          `${display(path)} must admit before calling the production transport`,
+        ).toBeTrue();
+      }
+      for (const path of filesBelow(join(pkg.directory, "src"), ".mjs")) {
+        expect(
+          /\bfetch\s*\(/.test(source(path)),
+          `${display(path)} must use finance_http transport`,
+        ).toBeFalse();
+      }
+    }
+  });
+
   test("text authority adapters remain independent of the PDF parser", () => {
     for (const name of [
       "finance_authority_snapshot",

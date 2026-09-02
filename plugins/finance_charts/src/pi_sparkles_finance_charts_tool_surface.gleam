@@ -136,13 +136,14 @@ fn adjustment_schema() -> schema.Schema {
         "dividend_adjusted",
         "total_return_adjusted",
         "provider_adjusted",
+        "provider_defined",
       ]),
     ),
     schema.Required(
       "label",
       schema.nullable(bounded_string(1, 500))
         |> schema.described(
-          "Use a non-null exact provider basis label only for provider_adjusted; use null for raw, split_adjusted, dividend_adjusted, and total_return_adjusted",
+          "Use a non-null exact provider basis label for provider_adjusted or provider_defined; provider_defined preserves an exact provider basis whose adjustment semantics may remain unknown. Use null for raw, split_adjusted, dividend_adjusted, and total_return_adjusted",
         ),
     ),
   ])

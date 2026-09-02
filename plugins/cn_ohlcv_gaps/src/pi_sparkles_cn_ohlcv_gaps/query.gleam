@@ -9,6 +9,7 @@ import finance_eastmoney/query as eastmoney_query
 import finance_listing/effective
 import finance_ohlcv/gap_assessment
 import finance_provenance/identity.{type Sha256}
+import finance_sina/query as sina_query
 import finance_track
 import gleam/list
 import gleam/option.{type Option}
@@ -79,6 +80,7 @@ pub type QueryError {
   ReceiptDigestMismatch
   ProviderIdentityMismatch
   InvalidProviderPlan(eastmoney_query.QueryError)
+  InvalidSinaProviderPlan(sina_query.QueryError)
   SourceReferenceMismatch
   InvalidProviderReceipt(gap_assessment.ReceiptError)
   InvalidStatusReceipt(index: Int, reason: gap_assessment.ReceiptError)
@@ -118,26 +120,7 @@ pub fn run(
     )
     |> result.map_error(InvalidListingReceipt),
   )
-  use plan <- result.try(
-    eastmoney_query.history(
-      finance_track.Cn,
-      eastmoney_market(gap_receipt.venue(receipt)),
-      gap_receipt.code(receipt),
-      gap_receipt.start_date(receipt),
-      gap_receipt.end_date(receipt),
-      gap_receipt.limit(receipt),
-    )
-    |> result.map_error(InvalidProviderPlan),
-  )
-  use _ <- result.try(
-    case
-      gap_receipt.source_reference(receipt)
-      == eastmoney_query.history_source_reference(plan)
-    {
-      True -> Ok(Nil)
-      False -> Error(SourceReferenceMismatch)
-    },
-  )
+  use _ <- result.try(validate_source_reference(receipt))
   use provider <- result.try(
     gap_assessment.provider_receipt(
       gap_receipt.provider(receipt),
@@ -167,14 +150,15 @@ fn build_gap_receipt(input: Input) -> Result(gap_receipt.Receipt, QueryError) {
       provider.schema == gap_receipt.schema_name,
       provider.schema_version == gap_receipt.schema_version,
       provider.digest_algorithm == gap_receipt.digest_algorithm,
-      provider.provider == "eastmoney"
+      provider.provider == "eastmoney" || provider.provider == "sina"
     {
       True, True, True, True -> Ok(Nil)
       _, _, _, _ -> Error(InvalidReceiptEnvelope)
     },
   )
   use provider_listing <- result.try(build_listing(
-    "eastmoney:"
+    provider.provider
+      <> ":"
       <> gap_receipt.venue_name(provider.venue)
       <> ":"
       <> provider.code,
@@ -186,6 +170,7 @@ fn build_gap_receipt(input: Input) -> Result(gap_receipt.Receipt, QueryError) {
   ))
   use pages <- result.try(build_pages(provider.pages, 0, []))
   gap_receipt.new(
+    provider: provider.provider,
     listing: provider_listing,
     start_date: provider.start_date,
     end_date: provider.end_date,
@@ -197,6 +182,65 @@ fn build_gap_receipt(input: Input) -> Result(gap_receipt.Receipt, QueryError) {
     bar_dates: provider.bar_dates,
   )
   |> result.map_error(InvalidGapReceipt)
+}
+
+fn validate_source_reference(
+  receipt: gap_receipt.Receipt,
+) -> Result(Nil, QueryError) {
+  case gap_receipt.provider(receipt) {
+    "eastmoney" -> {
+      use plan <- result.try(
+        eastmoney_query.history(
+          finance_track.Cn,
+          eastmoney_market(gap_receipt.venue(receipt)),
+          gap_receipt.code(receipt),
+          gap_receipt.start_date(receipt),
+          gap_receipt.end_date(receipt),
+          gap_receipt.limit(receipt),
+        )
+        |> result.map_error(InvalidProviderPlan),
+      )
+      case
+        gap_receipt.source_reference(receipt)
+        == eastmoney_query.history_source_reference(plan)
+      {
+        True -> Ok(Nil)
+        False -> Error(SourceReferenceMismatch)
+      }
+    }
+    "sina" -> {
+      use venue <- result.try(sina_venue(gap_receipt.venue(receipt)))
+      use plan <- result.try(
+        sina_query.history(
+          finance_track.Cn,
+          venue,
+          gap_receipt.code(receipt),
+          gap_receipt.start_date(receipt),
+          gap_receipt.end_date(receipt),
+          gap_receipt.limit(receipt),
+        )
+        |> result.map_error(InvalidSinaProviderPlan),
+      )
+      case
+        gap_receipt.source_reference(receipt)
+        == sina_query.history_source_reference(plan)
+      {
+        True -> Ok(Nil)
+        False -> Error(SourceReferenceMismatch)
+      }
+    }
+    _ -> Error(InvalidReceiptEnvelope)
+  }
+}
+
+fn sina_venue(
+  value: cn_identity.Venue,
+) -> Result(sina_query.Venue, QueryError) {
+  case value {
+    cn_identity.Sse -> Ok(sina_query.Sse)
+    cn_identity.Szse -> Ok(sina_query.Szse)
+    cn_identity.Bse -> Error(InvalidReceiptEnvelope)
+  }
 }
 
 fn build_listing(

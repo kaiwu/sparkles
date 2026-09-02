@@ -5,6 +5,28 @@ follow Semantic Versioning. The exact tier, plugin inventory, maturity, and
 content hashes remain authoritative in each tarball's `dsh-lock.json` and
 `release-lock.json`.
 
+## 0.1.12 - 2026-09-02
+
+- Preserve Sina's unknown OHLCV adjustment semantics as an explicit
+  `provider_defined` basis through SMA, RSI, ATR, and chart receipt consumers,
+  instead of rejecting the valid explicit Sina series or relabeling it as raw.
+- Cover the complete explicit `Eastmoney failure -> user-selected Sina history
+  -> SMA -> chart` chain through the DSH session bridge and the sibling plain
+  Pi binding lanes.
+
+## 0.1.11 - 2026-09-02
+
+- Add the exact reviewed SSE STAR 50 history route to the explicitly selected
+  Sina alternative while preserving the strict two-call contract: an
+  Eastmoney failure only prompts, and only a later user-approved Sina call can
+  change the source.
+- Apply the shared process-local one-request-per-two-seconds provider quotas
+  and one-attempt policy throughout the installed DSH inventory, and rebuild
+  every bundled artifact so the runtime cannot retain stale Eastmoney retry
+  behavior.
+- Make the DSH agent guidance state the source-change prompt and the successful
+  `eastmoney -> sina` transition explicitly.
+
 ## 0.1.10 - 2026-09-01
 
 - Consume the shared lazy PDF effect boundary so the DSH server entrypoint also

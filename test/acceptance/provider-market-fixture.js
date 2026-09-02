@@ -22,6 +22,7 @@ const specs = {
     artifact: "cn_ohlcv",
     toolName: "cn_stock_ohlcv",
     input: {
+      provider: "eastmoney",
       venue: "sse",
       board: "main",
       shareClass: "a_share",
@@ -218,6 +219,7 @@ async function executeBundledTool(spec) {
     registerTool(definition) {
       tools.set(definition.name, definition);
     },
+    appendEntry() {},
   };
   const artifact = join(DIST_DIR, spec.artifact, "index.js");
   const module = await import(

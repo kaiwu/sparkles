@@ -27,7 +27,9 @@ bodies out of errors. A pure scheduler enforces global and per-origin
 concurrency, bounded waiting, duplicate IDs, fair first-eligible admission, and
 two-phase active cancellation. An explicit asynchronous `Pool` now owns that
 state and launches admitted client calls without moving scheduling policy into
-the effect layer. A separate binary client/pool reuses the same retry and
+the effect layer. A named process-local `Limiter` coordinates one provider
+quota across independently loaded Pi and DSH shells; injected runtimes retain
+isolated state for deterministic tests. A separate binary client/pool reuses the same retry and
 scheduler laws without weakening the UTF-8 response contract. Cache interfaces,
 cassette recorder persistence, and jitter remain post-foundation extensions.
 Cassette bodies are currently required to be pre-redacted by the caller.
@@ -93,8 +95,9 @@ queueing, caching, cassettes, and error classification remain typed Gleam.
 
 - No provider endpoint paths, JSON decoders, credentials discovery, finance
   domain conversion, entitlement negotiation, or Pi APIs.
-- No global disk cache, hidden process singleton, background refresh, or
-  cross-process rate limiter in 0.1.
+- No global disk cache, background refresh, or cross-process rate limiter in
+  0.1. The process-local limiter is explicit provider policy and never stores
+  credentials or response data.
 - No silent stale-cache fallback. A provider adapter may explicitly request and
   label cached data after a transport failure.
 - No attempt to make a credential-free public API immune to provider terms or
@@ -116,6 +119,7 @@ queueing, caching, cassettes, and error classification remain typed Gleam.
 | `finance_http/binary_pool` | the same scheduler interpreter over byte-preserving responses |
 | `finance_http/retry` | retry classification, backoff, jitter, attempt budget, and `Retry-After` |
 | `finance_http/rate_limit` | per-origin/token-bucket state and provider header observations |
+| `finance_http/limiter` | explicit process-shared provider admission state; isolated under injected effects |
 | `finance_http/cache` | injected async cache interface and explicit hit/miss/stale records |
 | `finance_http/cassette` | canonical request/response format, recorder, replay transport, and redaction |
 | `finance_http/error` | bounded, redacted transport/policy/status/decode-adjacent errors |
@@ -125,7 +129,9 @@ queueing, caching, cassettes, and error classification remain typed Gleam.
 Only the final transport, cache, and sleep operations are effectful. Request
 normalization, retry classification, backoff calculation, rate-limit state,
 queue selection, cache eligibility, cassette matching, redaction, and error
-construction are pure functions over immutable policy/state values.
+construction are pure functions over immutable policy/state values. The narrow
+limiter interpreter stores only the latest typed rate state under a non-secret
+provider scope so separately bundled shells cannot multiply quota.
 
 The retry workflow is modeled as a reducer from `(State, Event)` to
 `#(State, List(Effect))`; its current effects describe transport attempts and
@@ -133,8 +139,9 @@ sleeps. The policy client supplies a concrete interpreter through injected
 `Sender`, `Sleeper`, `Clock`, and `StatusAcceptor` functions. This makes attempt
 sequences, budgets, cancellation races, and stale-result rejection testable
 without networking or wall-clock sleeps. Cache and observer effects will extend
-the reducer rather than becoming hidden globals. No module-level client or
-rate-limit singleton is allowed.
+the reducer rather than becoming hidden globals. No module-level client is
+allowed; production adapters opt into a named process-local limiter while
+tests inject isolated clocks, sleeps, transports, and limiter state.
 
 The current low-level `finance_http/transport.send` accepts an explicit
 cancellation value and returns `Promise(Result(Response, TransportError))`.

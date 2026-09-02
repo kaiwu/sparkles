@@ -21,19 +21,20 @@ const providers = [
   "OpenFIGI",
   "SEC",
   "SFC",
+  "Sina Finance",
   "SSE",
   "Tushare",
   "Twelve Data",
 ];
 
 describe("provider call inventory and live-lane safety", () => {
-  test("enumerates all 47 concrete request operations exactly once", () => {
+  test("enumerates all 48 concrete request operations exactly once", () => {
     const rows = inventory
       .split("\n")
       .filter((line) => providers.some((provider) => line.startsWith(`| ${provider} |`)));
 
-    expect(rows).toHaveLength(47);
-    expect(new Set(rows).size).toBe(47);
+    expect(rows).toHaveLength(48);
+    expect(new Set(rows).size).toBe(48);
     for (const provider of providers) {
       expect(rows.some((row) => row.startsWith(`| ${provider} |`))).toBeTrue();
     }

@@ -12,6 +12,9 @@ const cnFixture =
 const hkFixture =
   '{"rc":0,"data":{"code":"00700","name":"腾讯控股","klines":["2024-08-01,370.200,372.400,375.000,368.600,15432100,5743210000.00,1.72,0.59,2.20,0.25","2024-08-02,372.400,368.800,373.600,367.000,17654300,6521000000.00,1.77,-0.97,-3.60,0.29"]}}';
 
+const sinaFixture =
+  '[{"day":"2024-08-01","open":"1350.6000","high":"1363.35","low":"1346.00","close":"1358.98","volume":"36147"},{"day":"2024-08-02","open":"1358.98","high":"1360.00","low":"1320.00","close":"1328.36","volume":"37450"}]';
+
 beforeEach(() => {
   requests.length = 0;
   process.env.AGENT_CONTACT = "market-data@example.test";
@@ -102,6 +105,7 @@ describe("CN/HK Eastmoney OHLCV boundaries", () => {
     expect([...tools.keys()]).toEqual(["cn_stock_ohlcv"]);
 
     const result = await execute(tools.get("cn_stock_ohlcv"), {
+      provider: "eastmoney",
       venue: "sse",
       board: "main",
       shareClass: "a_share",
@@ -238,6 +242,104 @@ describe("CN/HK Eastmoney OHLCV boundaries", () => {
     expect(crashLines[0]).toContain("科创50ETF华夏");
   });
 
+  test("uses only Sina after explicit user selection and states the source change", async () => {
+    const tools = await harness("cn_ohlcv");
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      requests.push({ url, headers: new Headers(init?.headers) });
+      if (url.hostname === "money.finance.sina.com.cn") {
+        return new Response(sinaFixture, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected provider ${url.hostname}`);
+    };
+
+    const result = await execute(tools.get("cn_stock_ohlcv"), {
+      provider: "sina",
+      venue: "sse",
+      board: "main",
+      shareClass: "a_share",
+      code: "600519",
+      currency: "CNY",
+      startDate: "2024-08-01",
+      endDate: "2024-08-02",
+      limit: 3,
+    });
+
+    expect(requests.map(({ url }) => url.hostname)).toEqual([
+      "money.finance.sina.com.cn",
+    ]);
+    expect(result.details).toMatchObject({
+      provider: "sina",
+      selectedProvider: "sina",
+      selectionMode: "explicit_user_choice",
+      fallbackPerformed: false,
+      dataSourceChange: "eastmoney->sina_by_explicit_user_choice",
+      route: "explicit_alternative",
+      amountUnit: null,
+    });
+    expect(result.details.providerAttempts).toEqual([{
+      provider: "sina",
+      outcome: "selected",
+      error: null,
+    }]);
+    expect(result.details.providerRows[0].amount).toBeNull();
+    expect(result.details.gapAssessmentReceipt.provider).toBe("sina");
+    expect(result.details.gapAssessmentReceipt.digest).toBe(
+      receiptDigest(result.details.gapAssessmentReceipt),
+    );
+    expect(result.details.sourceReference).toContain(
+      "CN_MarketData.getKLineData?symbol=sh600519&scale=240&ma=no&datalen=3",
+    );
+    expect(result.content[0].text).toContain(
+      "DATA SOURCE CHANGED BY EXPLICIT USER CHOICE: eastmoney -> sina",
+    );
+    expect(result.content[0].text).toContain("No automatic fallback was performed");
+    expect(result.content[0].text).toContain("fallbackPerformed=false");
+    expect(tools.sessionEntries).toHaveLength(1);
+    expect(tools.sessionEntries[0].data).toMatchObject({
+      provider: "sina",
+      track: "cn",
+      mic: "XSHG",
+    });
+  });
+
+  test("Eastmoney failure only suggests Sina and never calls it", async () => {
+    const tools = await harness("cn_ohlcv");
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      requests.push({ url, headers: new Headers(init?.headers) });
+      throw new TypeError("simulated connection reset");
+    };
+
+    let failure;
+    try {
+      await execute(tools.get("cn_stock_ohlcv"), {
+        provider: "eastmoney",
+        venue: "sse",
+        board: "main",
+        shareClass: "a_share",
+        code: "600519",
+        currency: "CNY",
+        startDate: "2024-08-01",
+        endDate: "2024-08-02",
+        limit: 3,
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure.message).toContain("Sina was not called");
+    expect(failure.message).toContain(
+      "only after the user explicitly chooses Sina",
+    );
+    expect(requests.map(({ url }) => url.hostname)).toEqual([
+      "push2his.eastmoney.com",
+    ]);
+  });
+
   test("keeps HK currency caller-declared and exposes an exhausted row budget", async () => {
     const tools = await harness("hk_ohlcv");
     expect([...tools.keys()]).toEqual(["hk_stock_ohlcv"]);
@@ -362,6 +464,7 @@ describe("CN/HK Eastmoney OHLCV boundaries", () => {
     const tools = await harness("cn_ohlcv");
     await expect(
       execute(tools.get("cn_stock_ohlcv"), {
+        provider: "eastmoney",
         venue: "bse",
         board: "beijing",
         shareClass: "b_share",
@@ -370,7 +473,7 @@ describe("CN/HK Eastmoney OHLCV boundaries", () => {
         startDate: "2024-08-01",
         endDate: "2024-08-02",
       }),
-    ).rejects.toThrow("Invalid exact CN Eastmoney OHLCV identity or query");
+    ).rejects.toThrow("Invalid exact CN OHLCV identity or query");
     expect(requests).toHaveLength(0);
   });
 });

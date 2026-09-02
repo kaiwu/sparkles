@@ -4,6 +4,7 @@ import finance_http/binary_response
 import finance_http/cache
 import finance_http/cassette
 import finance_http/client
+import finance_http/limiter
 import finance_http/pool
 import finance_http/queue
 import finance_http/rate_limit
@@ -605,6 +606,115 @@ pub fn rate_limit_rejects_a_zero_window_that_would_bypass_pacing_test() {
     window: duration(0),
   )
   |> should.equal(Error(rate_limit.NonPositiveWindow))
+}
+
+pub fn shared_limiter_coordinates_independent_provider_runtimes_test() {
+  let now = instant(1000)
+  let assert Ok(state) =
+    rate_limit.new(
+      limit: 1,
+      remaining: 1,
+      reset_at: instant(3000),
+      window: duration(2000),
+    )
+  let first = limiter.shared("test:shared-provider-limit:v1", state)
+  let second = limiter.shared("test:shared-provider-limit:v1", state)
+  let sleeper = fn(wait, _) {
+    time.duration_milliseconds(wait) |> should.equal(2000)
+    promise.resolve(False)
+  }
+  let clock = fn() { now }
+
+  use admitted_first <- promise.await(limiter.admit(
+    first,
+    transport.new_cancellation(),
+    sleeper,
+    clock,
+  ))
+  use admitted_second <- promise.await(limiter.admit(
+    second,
+    transport.new_cancellation(),
+    sleeper,
+    clock,
+  ))
+  admitted_first |> should.be_ok
+  admitted_second |> should.equal(Error(transport.Cancelled))
+  promise.resolve(Nil)
+}
+
+pub fn isolated_limiters_do_not_share_injected_test_quota_test() {
+  let assert Ok(state) = rate_limit.new(1, 1, instant(3000), duration(2000))
+  let first = limiter.isolated(state)
+  let second = limiter.isolated(state)
+  let sleeper = fn(_, _) {
+    should.fail()
+    promise.resolve(False)
+  }
+  let clock = fn() { instant(1000) }
+
+  use admitted_first <- promise.await(limiter.admit(
+    first,
+    transport.new_cancellation(),
+    sleeper,
+    clock,
+  ))
+  use admitted_second <- promise.await(limiter.admit(
+    second,
+    transport.new_cancellation(),
+    sleeper,
+    clock,
+  ))
+  admitted_first |> should.be_ok
+  admitted_second |> should.be_ok
+  promise.resolve(Nil)
+}
+
+pub fn provider_scopes_do_not_spend_each_others_quota_test() {
+  let assert Ok(state) = rate_limit.new(1, 1, instant(3000), duration(2000))
+  let first = limiter.shared("test:provider-a:v1", state)
+  let second = limiter.shared("test:provider-b:v1", state)
+  let sleeper = fn(_, _) {
+    should.fail()
+    promise.resolve(False)
+  }
+  let clock = fn() { instant(1000) }
+
+  use admitted_first <- promise.await(limiter.admit(
+    first,
+    transport.new_cancellation(),
+    sleeper,
+    clock,
+  ))
+  use admitted_second <- promise.await(limiter.admit(
+    second,
+    transport.new_cancellation(),
+    sleeper,
+    clock,
+  ))
+  admitted_first |> should.be_ok
+  admitted_second |> should.be_ok
+  promise.resolve(Nil)
+}
+
+pub fn limiter_observes_cancellation_before_spending_quota_test() {
+  let assert Ok(state) = rate_limit.new(1, 1, instant(3000), duration(2000))
+  let admission = limiter.isolated(state)
+  let cancellation = transport.new_cancellation()
+  transport.cancel(cancellation)
+
+  use outcome <- promise.await(
+    limiter.admit(
+      admission,
+      cancellation,
+      fn(_, _) {
+        should.fail()
+        promise.resolve(False)
+      },
+      fn() { instant(1000) },
+    ),
+  )
+  outcome |> should.equal(Error(transport.Cancelled))
+  promise.resolve(Nil)
 }
 
 pub fn cache_never_hides_stale_state_test() {

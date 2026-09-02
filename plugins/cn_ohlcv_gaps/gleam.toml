@@ -17,6 +17,7 @@ finance_eastmoney = { path = "../../finance/finance_eastmoney" }
 finance_listing = { path = "../../finance/finance_listing" }
 finance_ohlcv = { path = "../../finance/finance_ohlcv" }
 finance_provenance = { path = "../../finance/finance_provenance" }
+finance_sina = { path = "../../finance/finance_sina" }
 finance_track = { path = "../../finance/finance_track" }
 pi_gleam = { path = "../../pi_gleam" }
 

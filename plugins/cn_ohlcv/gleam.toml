@@ -1,7 +1,7 @@
 name = "pi_sparkles_cn_ohlcv"
 version = "0.1.0"
 target = "javascript"
-description = "Exact daily mainland OHLCV over bounded Eastmoney history for Pi"
+description = "Exact daily mainland OHLCV with separately selected Eastmoney or Sina provider for Pi"
 licences = ["Apache-2.0"]
 gleam = ">= 1.18.0"
 
@@ -16,6 +16,7 @@ finance_eastmoney = { path = "../../finance/finance_eastmoney" }
 finance_http = { path = "../../finance/finance_http" }
 finance_ohlcv = { path = "../../finance/finance_ohlcv" }
 finance_provenance = { path = "../../finance/finance_provenance" }
+finance_sina = { path = "../../finance/finance_sina" }
 finance_track = { path = "../../finance/finance_track" }
 pi_gleam = { path = "../../pi_gleam" }
 
@@ -29,6 +30,6 @@ runtime = "bun"
 tested_version = "0.83.0"
 
 [metadata.finance]
-provider = "Eastmoney"
+provider = "Eastmoney or explicitly user-selected Sina alternative"
 access = "public web local analysis; rights and service level unknown"
 track = "cn"

@@ -166,7 +166,10 @@ async function execute(tool, input, executionContext = { hasUI: false, ui: {} })
   );
 }
 
-function receiptFixture() {
+function receiptFixture({
+  adjustment = "raw",
+  provider = "fixture-provider",
+} = {}) {
   const sourceReference = "fixture://session-bound-bars";
   const retrievedAtUnixMilliseconds = 1_770_000_000_000;
   const bars = [
@@ -189,8 +192,8 @@ function receiptFixture() {
     sourceLanguage: "zh-CN",
     priceUnit: "CNY",
     volumeUnit: "provider_defined_unknown",
-    adjustment: "raw",
-    provider: "fixture-provider",
+    adjustment,
+    provider,
     sourceReference,
     acquisitionReceipt: receipt,
     retrievedAtUnixMilliseconds,
@@ -323,9 +326,9 @@ describe("stock technicals bundled boundary", () => {
     );
   });
 
-  test("resolves one short session receipt for all indicators and renders compactly in Pi", async () => {
+  test("preserves unknown provider adjustment semantics across all receipt indicators in Pi", async () => {
     const tools = await harness();
-    const fixture = receiptFixture();
+    const fixture = receiptFixture({ adjustment: "unknown", provider: "sina" });
     const common = {
       seriesReceipt: fixture.receipt,
       projection: { kind: "compact", priorOffset: 1 },
@@ -386,6 +389,13 @@ describe("stock technicals bundled boundary", () => {
     });
     expect(rsi.details.latestValue.state).toBe("known");
     expect(atr.details.latestValue.state).toBe("known");
+    for (const result of [sma, rsi, atr]) {
+      expect(result.details.adjustmentBasis).toEqual({
+        kind: "provider_defined",
+        label: "sina_source_adjustment_semantics_unknown",
+        evidenceRoots: [],
+      });
+    }
     expect(tools.appendedEntries).toHaveLength(3);
     for (const [index, result] of [sma, rsi, atr].entries()) {
       const entry = tools.appendedEntries[index];

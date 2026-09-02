@@ -2,7 +2,8 @@
 
 Experimental isolated `cn` Pi plugin exposing `cn_market_movers`,
 `cn_raw_vendor_quote`, and `cn_raw_vendor_history` over the shared
-`finance_eastmoney` adapter. The raw
+`finance_eastmoney` adapter, plus one exact explicitly selected
+`finance_sina` STAR 50 history route. The raw
 vendor names deliberately remain distinct from the ProductUseful provider-port
 tools `cn_stock_quote` and `cn_stock_history`.
 
@@ -20,7 +21,21 @@ Eastmoney does not prove security kind, share class, currency, or index
 authority. History is daily, raw, and unadjusted
 (`fqt=0`) and preserves exact numeric response lexemes.
 
-Results visibly report Eastmoney as the vendor origin, direct route, provider
+`cn_raw_vendor_history` requires an explicit `provider`. `eastmoney` is the
+normal selection. If Eastmoney fails for the exact reviewed SSE STAR 50 index
+(`venue=sse`, `code=000688`, `instrumentKind=benchmark_index`), the error says
+that Sina is available, says that Sina was not called, and requires the caller
+to ask the user. Only after the user explicitly accepts may a new call repeat
+the exact identity, date window, and limit with `provider=sina`. That second
+call contacts Sina only and visibly reports
+`dataSourceChange=eastmoney->sina_by_explicit_user_choice` and
+`fallbackPerformed=false`. No automatic fallback exists. Other benchmark and
+sector histories remain Eastmoney-only. The Sina response does not echo the
+index identity, price unit, amount, adjustment, calendar, or volume unit, so
+the reviewed registry binds the identity, prices are labelled index points,
+and the remaining facts stay unknown.
+
+Results visibly report the selected vendor origin, direct or explicit-alternative route, provider
 timestamp/retrieval time, local-analysis entitlement, unknown latency/service
 level/redistribution rights, unverified volume semantics, and every limitation.
 They are not exchange observations and do not silently use AKShare as origin,

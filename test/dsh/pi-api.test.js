@@ -465,6 +465,7 @@ describe("pi-api facade", () => {
       const owner = fakeAgent("producer-owner");
       const tool = (name) => ctx.__tools.find((definition) => definition.name === name);
       const history = await tool("cn_stock_ohlcv").execute({
+        provider: "eastmoney",
         venue: "sse",
         board: "main",
         shareClass: "a_share",
@@ -540,6 +541,205 @@ describe("pi-api facade", () => {
           toolRunContext(fakeAgent("producer-other"), "other-cn-sma"),
         ),
       ).rejects.toThrow("No active-session OHLCV handoff matched seriesReceipt");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalContact === undefined) delete process.env.AGENT_CONTACT;
+      else process.env.AGENT_CONTACT = originalContact;
+    }
+  });
+
+  test("CN OHLCV uses Sina only after explicit user selection in DSH", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalContact = process.env.AGENT_CONTACT;
+    process.env.AGENT_CONTACT = "dsh-sina-explicit@example.test";
+    const hosts = [];
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      hosts.push(url.hostname);
+      if (url.hostname !== "money.finance.sina.com.cn") {
+        throw new Error(`unexpected provider ${url.hostname}`);
+      }
+      return new Response(
+        '[{"day":"2024-08-01","open":"1350.6000","high":"1363.35","low":"1346.00","close":"1358.98","volume":"36147"},{"day":"2024-08-02","open":"1358.98","high":"1360.00","low":"1320.00","close":"1328.36","volume":"37450"}]',
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+
+    try {
+      const ctx = fakeCtx();
+      const api = createPiApi({ ctx });
+      const artifact = resolve(import.meta.dir, "../../dist/cn_ohlcv/index.js");
+      const extension = await import(
+        `${artifact}?dsh-sina-explicit=${Date.now()}-${Math.random()}`
+      );
+      await extension.default(api);
+      const owner = fakeAgent("sina-explicit-owner");
+      const history = await ctx.__tools[0].execute({
+        provider: "sina",
+        venue: "sse",
+        board: "main",
+        shareClass: "a_share",
+        code: "600519",
+        currency: "CNY",
+        startDate: "2024-08-01",
+        endDate: "2024-08-02",
+        limit: 3,
+      }, toolRunContext(owner, "cn-sina-explicit"));
+
+      expect(hosts).toEqual(["money.finance.sina.com.cn"]);
+      expect(history.details).toMatchObject({
+        selectedProvider: "sina",
+        selectionMode: "explicit_user_choice",
+        fallbackPerformed: false,
+        dataSourceChange: "eastmoney->sina_by_explicit_user_choice",
+      });
+      expect(history.content[0].text).toContain(
+        "DATA SOURCE CHANGED BY EXPLICIT USER CHOICE: eastmoney -> sina",
+      );
+      expect(history.content[0].text).toContain(
+        "No automatic fallback was performed",
+      );
+      expect(owner.session.events[0].data.data).toMatchObject({
+        provider: "sina",
+        track: "cn",
+        mic: "XSHG",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalContact === undefined) delete process.env.AGENT_CONTACT;
+      else process.env.AGENT_CONTACT = originalContact;
+    }
+  });
+
+  test("CN STAR 50 DSH route prompts after Eastmoney failure and uses Sina only in a separate explicit call", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalContact = process.env.AGENT_CONTACT;
+    process.env.AGENT_CONTACT = "dsh-star50-sina@example.test";
+    const hosts = [];
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      hosts.push(url.hostname);
+      if (url.hostname === "push2his.eastmoney.com") {
+        return new Response("provider unavailable", { status: 503 });
+      }
+      if (url.hostname === "money.finance.sina.com.cn") {
+        return new Response(
+          '[{"day":"2026-08-03","open":"1000.10","high":"1012.30","low":"998.20","close":"1008.50","volume":"123456789"},{"day":"2026-08-04","open":"1008.50","high":"1020.40","low":"1003.60","close":"1018.20","volume":"135791357"}]',
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`unexpected provider ${url.hostname}`);
+    };
+
+    try {
+      const ctx = fakeCtx();
+      const api = createPiApi({ ctx });
+      for (const name of ["cn_market_data", "stock_technicals", "finance_charts"]) {
+        const artifact = resolve(import.meta.dir, `../../dist/${name}/index.js`);
+        const extension = await import(
+          `${artifact}?dsh-star50-sina=${Date.now()}-${Math.random()}`
+        );
+        await extension.default(api);
+      }
+      const tool = (name) => ctx.__tools.find(
+        (definition) => definition.name === name,
+      );
+      const historyTool = ctx.__tools.find(
+        (definition) => definition.name === "cn_raw_vendor_history",
+      );
+      const owner = fakeAgent("star50-sina-owner");
+      const baseInput = {
+        venue: "sse",
+        code: "000688",
+        instrumentKind: "benchmark_index",
+        startDate: "2026-08-01",
+        endDate: "2026-08-05",
+        limit: 10,
+      };
+
+      let failure;
+      try {
+        await historyTool.execute(
+          { provider: "eastmoney", ...baseInput },
+          toolRunContext(owner, "star50-eastmoney"),
+        );
+      } catch (error) {
+        failure = error;
+      }
+      expect(hosts).toEqual(["push2his.eastmoney.com"]);
+      expect(failure).toMatchObject({
+        code: "provider_history_failed_sina_available",
+        details: {
+          failedProvider: "eastmoney",
+          suggestedProvider: "sina",
+          sinaCalled: false,
+          automaticFallbackAllowed: false,
+          requiresExplicitUserChoice: true,
+        },
+      });
+      expect(failure.message).toContain("Sina was not called");
+      expect(owner.session.events).toHaveLength(0);
+
+      const history = await historyTool.execute(
+        { provider: "sina", ...baseInput },
+        toolRunContext(owner, "star50-sina-explicit"),
+      );
+      expect(hosts).toEqual([
+        "push2his.eastmoney.com",
+        "money.finance.sina.com.cn",
+      ]);
+      expect(history.details).toMatchObject({
+        selectedProvider: "sina",
+        selectionMode: "explicit_user_choice",
+        fallbackPerformed: false,
+        dataSourceChange: "eastmoney->sina_by_explicit_user_choice",
+        code: "000688",
+      });
+      expect(history.content[0].text).toContain(
+        "DATA SOURCE CHANGED BY EXPLICIT USER CHOICE: eastmoney -> sina",
+      );
+      expect(owner.session.events[0].data.data).toMatchObject({
+        provider: "sina",
+        track: "cn",
+        instrumentId: "000688",
+        mic: "XSHG",
+        adjustment: "unknown",
+      });
+
+      const sma = await tool("sma").execute({
+        seriesReceipt: history.details.seriesReceipt,
+        calculation: {
+          formulaVariant: "sma_v1",
+          period: 2,
+          windowVariant: "slot_window_v1",
+          parseablePolicy: "exclude_parseable_with_checks",
+          rounding: {
+            mode: "half_up",
+            policy: "per_step",
+            outputScale: 2,
+            intermediateScale: 6,
+          },
+        },
+        projection: { kind: "compact", priorOffset: 1 },
+      }, toolRunContext(owner, "star50-sina-sma"));
+      expect(sma.details.latestValue.state).toBe("known");
+      expect(sma.details.adjustmentBasis).toEqual({
+        kind: "provider_defined",
+        label: "sina_source_adjustment_semantics_unknown",
+        evidenceRoots: [],
+      });
+
+      const chart = await tool("chart_ohlcv").execute({
+        seriesReceipt: history.details.seriesReceipt,
+        maximumBars: 2,
+        indicatorReceipts: [sma.details.chartHandoffReceipt],
+      }, toolRunContext(owner, "star50-sina-chart"));
+      expect(chart.details.bars).toHaveLength(2);
+      expect(chart.details.indicators).toHaveLength(1);
+      expect(chart.details.adjustment).toEqual({
+        kind: "provider_defined",
+        label: "sina_source_adjustment_semantics_unknown",
+      });
     } finally {
       globalThis.fetch = originalFetch;
       if (originalContact === undefined) delete process.env.AGENT_CONTACT;

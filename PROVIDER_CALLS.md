@@ -6,7 +6,8 @@ provenance, and caller-supplied import transports are not providers. The Futu
 T6 probes are listed separately because they are temporary acceptance lanes,
 not normal `finance_http` adapters.
 
-Status is from the bounded, read-only live audit on 2026-08-19. `decoded` means
+Status is from the bounded, read-only live audit on 2026-08-19, plus the
+bounded Sina CN endpoint review on 2026-09-02. `decoded` means
 the built production plugin and its real decoder accepted the response.
 `contract` means the exact live response satisfied the package's bounded media
 or tabular-envelope contract but was not replayed through a product tool.
@@ -20,10 +21,10 @@ rejects a current provider value.
 | Coverage class | Calls | Meaning |
 | --- | ---: | --- |
 | Live production-decoded | 33 | Exact request and production decoder passed. |
-| Live response-contract | 6 | Exact public response passed media/signature/size checks. |
+| Live response-contract | 7 | Exact public response passed media/signature/size checks. |
 | Live Tushare schema | 4 | Exact production body returned code 0, exact fields, and valid row widths; calls were not repeated through plugins because of the provider's unusually restrictive rate limits. |
 | Entitlement-blocked | 4 | The supplied free Tushare token is valid but provider code `40203` denies these APIs. |
-| **Total concrete calls** | **47** | Every call was either live-validated or reached an exact, named credential/entitlement boundary. |
+| **Total concrete calls** | **48** | Every call was either live-validated or reached an exact, named credential/entitlement boundary. |
 
 ## Concrete calls
 
@@ -39,7 +40,7 @@ rejects a current provider value.
 | Eastmoney | `quote` — `/api/qt/stock/get` | decoded for separately labelled `cn` and `hk` legs | Public production URL; no sandbox or key. |
 | Eastmoney | `cn_overview` — `/api/qt/ulist.np/get` | decoded | Public production URL. |
 | Eastmoney | `cn_movers` — `/api/qt/clist/get` | decoded | Public production URL. |
-| Eastmoney | `history` — `/api/qt/stock/kline/get` | decoded for separately labelled `cn` and `hk` legs | Public production URL. |
+| Eastmoney | `history` — `/api/qt/stock/kline/get` | decoded for separately labelled `cn` and `hk` legs; operationally unavailable with connection-level failures on 2026-09-01/02 | Public production URL. The failures exposed no HTTP `Retry-After` or reset time, so a ban-lift time is unknown. Production shells now share one request/two seconds and make no automatic retry. |
 | Eastmoney | `cn_income_statement` — `/api/data/v1/get` | decoded | Public production URL. |
 | Eastmoney | `hk_income_context` — `/securities/api/data/v1/get` | decoded | Public production URL. |
 | Eastmoney | `hk_income_statement` — `/securities/api/data/v1/get` | decoded | Public production URL. |
@@ -64,6 +65,7 @@ rejects a current provider value.
 | SEC | `company_facts` | decoded | Public production API. Provider-null concept labels/descriptions remain empty/unknown rather than invalidating unrelated facts. |
 | SEC | `company_concept` | decoded | Public production API. |
 | SFC | `press_releases` — RSS | contract | Public production URL; XML media and byte bound passed. |
+| Sina Finance | `history` — `/quotes_service/api/json_v2.php/CN_MarketData.getKLineData` | contract, current CN exact-string OHLCV rows and exact SSE STAR 50 `sh000688` rows observed through 2026-09-02; shipped decoder fixture- and live-tool-tested | Public production URL. Separate, explicitly user-selected CN SSE/SZSE A-share alternative and exact reviewed SSE STAR 50 (`000688`) history alternative only; it is never called automatically after Eastmoney failure. Response does not echo identity or amount. One request/two seconds, one in flight, no retry. |
 | SSE | `constituents` — `/commonSoaQuery.do` | decoded, 50 rows | Public production URL; the shipped `cn_index_constituents` decoder accepted the complete `000688` manifest published 2026-08-19. No credential or Tushare fallback. |
 | SSE | `industry_composition` — `/commonSoaQuery.do` | decoded, 6 rows | Public production URL; the shipped `cn_index_industry_composition` decoder accepted aggregate sector counts covering all 50 members and exact weight lexemes effective 2026-08-18. |
 | Tushare | `stock_basic` | live schema, 1 row | Supplied mode-0600 `/tmp/tushare` free token; exact production request, no retry. |
@@ -82,6 +84,21 @@ recheck is `bun run test:live:providers -- --check provider.operation`.
 `bun run test:live:sec` retains the deeper seven-request SEC compatibility
 lane. Neither command is part of normal tests, tier verification, packaging, or
 publication.
+
+All production provider transports enter `finance_http/limiter` directly or
+through `finance_authority_snapshot`. The process-local quota is shared across
+independently loaded Pi and DSH shells; injected test runtimes remain isolated.
+The architecture lane fails any concrete transport that calls
+`finance_http/transport.send` without the shared limiter. This does not claim
+cross-process coordination or immunity from undocumented provider quotas.
+
+## CN/HK Sina alternative applicability
+
+| Track | Status | Exact behavior |
+| --- | --- | --- |
+| `cn` | supported for SSE/SZSE CNY A-shares and exact reviewed SSE STAR 50 history | Eastmoney remains the normal selection. Its failure suggests Sina and explicitly says Sina was not called. Only after the user chooses Sina may a new call supply `provider: "sina"`; that call contacts only Sina and reports `dataSourceChange: "eastmoney->sina_by_explicit_user_choice"`, `fallbackPerformed: false`, and one Sina attempt. |
+| `hk` | `track_partial`, not exposed | Sina's official HK history surface observed during review ended in 2019. It is not accepted as a current OHLCV alternative. |
+| `us` | unsupported | No Sina alternative is selected or implied. |
 
 ## Current-index acquisition track applicability
 

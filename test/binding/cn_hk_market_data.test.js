@@ -60,6 +60,27 @@ function historyFixture(code) {
   };
 }
 
+function sinaStar50Fixture() {
+  return [
+    {
+      day: "2026-08-03",
+      open: "1000.10",
+      high: "1012.30",
+      low: "998.20",
+      close: "1008.50",
+      volume: "123456789",
+    },
+    {
+      day: "2026-08-04",
+      open: "1008.50",
+      high: "1020.40",
+      low: "1003.60",
+      close: "1018.20",
+      volume: "135791357",
+    },
+  ];
+}
+
 function moversFixture() {
   return {
     rc: 0,
@@ -112,6 +133,12 @@ beforeEach(() => {
     const url = new URL(String(input));
     const headers = new Headers(init?.headers);
     requests.push({ url, headers });
+    if (url.hostname === "money.finance.sina.com.cn") {
+      return new Response(JSON.stringify(sinaStar50Fixture()), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
     const code = url.searchParams.get("secid")?.split(".").at(-1);
     const body = url.pathname.endsWith("/clist/get")
       ? moversFixture()
@@ -197,6 +224,7 @@ describe("isolated CN/HK Eastmoney market-data boundaries", () => {
     expect(quote.details.retrievedAtUnixMilliseconds).toBeGreaterThan(0);
 
     const history = await execute(tools.get("cn_raw_vendor_history"), {
+      provider: "eastmoney",
       venue: "bse",
       code: "920079",
       startDate: "2026-08-01",
@@ -396,6 +424,7 @@ describe("isolated CN/HK Eastmoney market-data boundaries", () => {
 
     await expect(
       execute(tools.get("cn_raw_vendor_history"), {
+        provider: "eastmoney",
         venue: "szse",
         code: "399001",
         startDate: "2026-08-01",
@@ -406,6 +435,7 @@ describe("isolated CN/HK Eastmoney market-data boundaries", () => {
     expect(requests).toHaveLength(0);
 
     const history = await execute(tools.get("cn_raw_vendor_history"), {
+      provider: "eastmoney",
       venue: "szse",
       code: "399001",
       instrumentKind: "benchmark_index",
@@ -417,6 +447,7 @@ describe("isolated CN/HK Eastmoney market-data boundaries", () => {
     expect(requests).toHaveLength(1);
 
     const star50 = await execute(tools.get("cn_raw_vendor_history"), {
+      provider: "eastmoney",
       venue: "sse",
       code: "000688",
       instrumentKind: "benchmark_index",
@@ -445,6 +476,7 @@ describe("isolated CN/HK Eastmoney market-data boundaries", () => {
     });
     await expect(
       execute(tools.get("cn_raw_vendor_history"), {
+        provider: "eastmoney",
         venue: "sse",
         code: "000928",
         startDate: "2026-08-01",
@@ -459,6 +491,7 @@ describe("isolated CN/HK Eastmoney market-data boundaries", () => {
     });
     await expect(
       execute(tools.get("cn_raw_vendor_history"), {
+        provider: "eastmoney",
         venue: "sse",
         code: "801780",
         instrumentKind: "sector_index",
@@ -469,6 +502,7 @@ describe("isolated CN/HK Eastmoney market-data boundaries", () => {
     expect(requests).toHaveLength(2);
 
     const sector = await execute(tools.get("cn_raw_vendor_history"), {
+      provider: "eastmoney",
       venue: "sse",
       code: "000928",
       instrumentKind: "sector_index",
@@ -478,6 +512,112 @@ describe("isolated CN/HK Eastmoney market-data boundaries", () => {
     });
     expect(sector.details.instrumentKind).toBe("sector_index");
     expect(requests).toHaveLength(3);
+  });
+
+  test("STAR 50 Eastmoney failure only prompts Sina, then an explicit Sina call states the source change", async () => {
+    const tools = await harness("cn");
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      requests.push({ url, headers: new Headers(init?.headers) });
+      if (url.hostname !== "push2his.eastmoney.com") {
+        throw new Error(`unexpected provider ${url.hostname}`);
+      }
+      return new Response("provider unavailable", { status: 503 });
+    };
+
+    let failure;
+    try {
+      await execute(tools.get("cn_raw_vendor_history"), {
+        provider: "eastmoney",
+        venue: "sse",
+        code: "000688",
+        instrumentKind: "benchmark_index",
+        startDate: "2026-08-01",
+        endDate: "2026-08-05",
+        limit: 10,
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(requests.map(({ url }) => url.hostname)).toEqual([
+      "push2his.eastmoney.com",
+    ]);
+    expect(failure).toMatchObject({
+      code: "provider_history_failed_sina_available",
+      details: {
+        failedProvider: "eastmoney",
+        suggestedProvider: "sina",
+        sinaCalled: false,
+        automaticFallbackAllowed: false,
+        requiresExplicitUserChoice: true,
+        recommendedTool: "cn_raw_vendor_history",
+      },
+    });
+    expect(failure.message).toContain("Sina was not called");
+    expect(failure.message).toContain("only after the user explicitly chooses Sina");
+    expect(tools.sessionEntries).toHaveLength(0);
+
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      requests.push({ url, headers: new Headers(init?.headers) });
+      if (url.hostname !== "money.finance.sina.com.cn") {
+        throw new Error(`unexpected provider ${url.hostname}`);
+      }
+      return new Response(JSON.stringify(sinaStar50Fixture()), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    const result = await execute(tools.get("cn_raw_vendor_history"), {
+      provider: "sina",
+      venue: "sse",
+      code: "000688",
+      instrumentKind: "benchmark_index",
+      startDate: "2026-08-01",
+      endDate: "2026-08-05",
+      limit: 10,
+    });
+
+    expect(requests.map(({ url }) => url.hostname)).toEqual([
+      "push2his.eastmoney.com",
+      "money.finance.sina.com.cn",
+    ]);
+    expect(result.details).toMatchObject({
+      provider: "sina",
+      selectedProvider: "sina",
+      selectionMode: "explicit_user_choice",
+      fallbackPerformed: false,
+      dataSourceChange: "eastmoney->sina_by_explicit_user_choice",
+      route: "explicit_alternative",
+      code: "000688",
+      instrumentKind: "benchmark_index",
+      priceUnit: "index_points",
+      declaredCurrency: null,
+      amountUnit: null,
+    });
+    expect(result.details.providerAttempts).toEqual([{
+      provider: "sina",
+      outcome: "selected",
+      error: null,
+    }]);
+    expect(result.details.sourceReference).toContain("symbol=sh000688");
+    expect(result.details.bars[0].amount).toBeNull();
+    expect(result.content[0].text).toContain(
+      "DATA SOURCE CHANGED BY EXPLICIT USER CHOICE: eastmoney -> sina",
+    );
+    expect(result.content[0].text).toContain(
+      "No automatic fallback was performed",
+    );
+    expect(tools.sessionEntries).toHaveLength(1);
+    expect(tools.sessionEntries[0]).toMatchObject({
+      customType: "pi_sparkles_finance_ohlcv.series_handoff.v1",
+      data: {
+        track: "cn",
+        provider: "sina",
+        instrumentId: "000688",
+        mic: "XSHG",
+      },
+    });
   });
 
   test("HK never assumes currency and retains its five-digit market ID", async () => {

@@ -211,23 +211,19 @@ pub fn send(
 }
 
 fn policy(origin: String, path: String) -> bounded_runtime.Policy {
-  let assert Ok(window) = time.duration(1000)
+  let assert Ok(window) = time.duration(2000)
   let assert Ok(maximum_elapsed) = time.duration(15_000)
   let assert Ok(base_delay) = time.duration(500)
   let assert Ok(maximum_delay) = time.duration(2000)
-  let admissions = case origin == provider_request.hk_fundamentals_origin {
-    True -> 2
-    False -> 1
-  }
   let assert Ok(value) =
     bounded_runtime.policy(
       origin: origin,
       allowed_paths: [path],
-      admissions_per_window: admissions,
+      admissions_per_window: 1,
       window: window,
       maximum_in_flight: 1,
       maximum_waiting: 20,
-      maximum_attempts: 2,
+      maximum_attempts: 1,
       maximum_elapsed: maximum_elapsed,
       base_delay: base_delay,
       maximum_delay: maximum_delay,
@@ -236,7 +232,7 @@ fn policy(origin: String, path: String) -> bounded_runtime.Policy {
 }
 
 fn one_shot_policy(origin: String, path: String) -> bounded_runtime.Policy {
-  let assert Ok(window) = time.duration(1000)
+  let assert Ok(window) = time.duration(2000)
   let assert Ok(maximum_elapsed) = time.duration(15_000)
   let assert Ok(base_delay) = time.duration(500)
   let assert Ok(maximum_delay) = time.duration(2000)

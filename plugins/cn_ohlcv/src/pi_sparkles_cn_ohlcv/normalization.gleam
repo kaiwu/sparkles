@@ -6,6 +6,8 @@ import finance_core/time.{type Instant}
 import finance_eastmoney/history
 import finance_eastmoney/query.{type HistoryQuery, type Market}
 import finance_ohlcv
+import finance_sina/history as sina_history
+import finance_sina/query as sina_query
 import gleam/int
 import gleam/list
 import gleam/option.{None}
@@ -78,6 +80,47 @@ pub fn batch(
   |> result.map_error(InvalidBatch)
 }
 
+pub fn sina_batch(
+  plan: sina_query.HistoryQuery,
+  value: sina_history.History,
+  retrieved_at: Instant,
+  declared_currency: Currency,
+) -> Result(finance_ohlcv.Batch, NormalizationError) {
+  use normalized <- result.try(
+    normalize_sina_bars(sina_history.bars(value), 0, []),
+  )
+  use source_ref <- result.try(
+    source.new(
+      "sina",
+      sina_query.history_source_reference(plan),
+      source.Other("public_web_rights_unknown"),
+    )
+    |> result.map_error(InvalidSource),
+  )
+  let assert Ok(zone) = time.timezone("Asia/Shanghai")
+  let assert Ok(provider_day) =
+    market.other_session("sina_scale_240_provider_aggregation")
+  finance_ohlcv.batch(
+    normalized,
+    retrieved_at: retrieved_at,
+    timezone: zone,
+    currency: declared_currency,
+    volume_unit: finance_ohlcv.UnknownVolumeUnit,
+    adjustment: adjustment.Raw,
+    session: provider_day,
+    source: source_ref,
+    expected_provider: "sina",
+    pagination: case sina_history.provider_window_truncated(value) {
+      True -> finance_ohlcv.TruncatedByBarBudget(sina_query.history_limit(plan))
+      False -> finance_ohlcv.AllPages
+    },
+    calendar: finance_ohlcv.CalendarNotAssessed(
+      "reviewed_cn_calendar_and_status_source_not_composed",
+    ),
+  )
+  |> result.map_error(InvalidBatch)
+}
+
 fn normalize_bars(
   values: List(history.Bar),
   index: Int,
@@ -121,6 +164,53 @@ fn normalize_bars(
         |> result.map_error(fn(reason) { InvalidBar(index, reason) }),
       )
       normalize_bars(rest, index + 1, [normalized, ..reversed])
+    }
+  }
+}
+
+fn normalize_sina_bars(
+  values: List(sina_history.Bar),
+  index: Int,
+  reversed: List(finance_ohlcv.Bar),
+) -> Result(List(finance_ohlcv.Bar), NormalizationError) {
+  case values {
+    [] -> Ok(list.reverse(reversed))
+    [value, ..rest] -> {
+      use open <- result.try(
+        finance_ohlcv.exact(sina_history.open(value))
+        |> result.map_error(fn(_) { InvalidOpen(index) }),
+      )
+      use high <- result.try(
+        finance_ohlcv.exact(sina_history.high(value))
+        |> result.map_error(fn(_) { InvalidHigh(index) }),
+      )
+      use low <- result.try(
+        finance_ohlcv.exact(sina_history.low(value))
+        |> result.map_error(fn(_) { InvalidLow(index) }),
+      )
+      use close <- result.try(
+        finance_ohlcv.exact(sina_history.close(value))
+        |> result.map_error(fn(_) { InvalidClose(index) }),
+      )
+      use volume <- result.try(
+        finance_ohlcv.exact(sina_history.volume(value))
+        |> result.map_error(fn(_) { InvalidVolume(index) }),
+      )
+      use normalized <- result.try(
+        finance_ohlcv.date_bar(
+          date_text(sina_history.date(value)),
+          sina_history.date(value),
+          open,
+          high,
+          low,
+          close,
+          volume,
+          None,
+          None,
+        )
+        |> result.map_error(fn(reason) { InvalidBar(index, reason) }),
+      )
+      normalize_sina_bars(rest, index + 1, [normalized, ..reversed])
     }
   }
 }

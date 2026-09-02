@@ -1,6 +1,7 @@
 import finance_core/time
 import finance_fred/request as provider_request
 import finance_http/client
+import finance_http/limiter
 import finance_http/pool
 import finance_http/rate_limit
 import finance_http/request
@@ -10,8 +11,6 @@ import finance_http/scheduler
 import finance_http/transport.{type Cancellation, type TransportError}
 import gleam/javascript/promise.{type Promise}
 import gleam/result
-
-type Cell(value)
 
 pub opaque type Runtime {
   Runtime(pool: pool.Pool)
@@ -28,13 +27,27 @@ pub type SendError {
 }
 
 pub fn new() -> Result(Runtime, InitError) {
-  new_with(transport.send, client.cancellable_sleep, client.system_clock)
+  new_configured(
+    transport.send,
+    client.cancellable_sleep,
+    client.system_clock,
+    True,
+  )
 }
 
 pub fn new_with(
   sender: client.Sender,
   sleeper: client.Sleeper,
   clock: client.Clock,
+) -> Result(Runtime, InitError) {
+  new_configured(sender, sleeper, clock, False)
+}
+
+fn new_configured(
+  sender: client.Sender,
+  sleeper: client.Sleeper,
+  clock: client.Clock,
+  share_limit: Bool,
 ) -> Result(Runtime, InitError) {
   let now = clock()
   let assert Ok(window) = time.duration(1000)
@@ -43,12 +56,16 @@ pub fn new_with(
     rate_limit.new(limit: 2, remaining: 2, reset_at:, window:)
     |> result.map_error(InvalidRate),
   )
-  let cell = new_cell(state)
+  let admission = case share_limit {
+    True ->
+      limiter.shared("fred:https://api.stlouisfed.org:2-per-1000ms:v1", state)
+    False -> limiter.isolated(state)
+  }
   let policy_client =
     client.new(
       retry_policy(),
       fn(req, cancellation) {
-        gated_send(cell, req, cancellation, sender, sleeper, clock)
+        gated_send(admission, req, cancellation, sender, sleeper, clock)
       },
       sleeper,
       clock,
@@ -91,53 +108,22 @@ pub fn send(
 }
 
 fn gated_send(
-  cell: Cell(rate_limit.State),
+  admission: limiter.Limiter,
   req: request.Request,
   cancellation: Cancellation,
   sender: client.Sender,
   sleeper: client.Sleeper,
   clock: client.Clock,
 ) -> Promise(Result(Response, TransportError)) {
-  use admitted <- promise.await(admit(cell, cancellation, sleeper, clock))
+  use admitted <- promise.await(limiter.admit(
+    admission,
+    cancellation,
+    sleeper,
+    clock,
+  ))
   case admitted {
     Error(error) -> promise.resolve(Error(error))
     Ok(Nil) -> sender(req, cancellation)
-  }
-}
-
-fn admit(
-  cell: Cell(rate_limit.State),
-  cancellation: Cancellation,
-  sleeper: client.Sleeper,
-  clock: client.Clock,
-) -> Promise(Result(Nil, TransportError)) {
-  case transport.is_cancelled(cancellation) {
-    True -> promise.resolve(Error(transport.Cancelled))
-    False -> {
-      let now = clock()
-      case rate_limit.acquire(read_cell(cell), now) {
-        Error(_) -> promise.resolve(Error(transport.InvalidTransportResult))
-        Ok(#(next, rate_limit.Permit)) -> {
-          write_cell(cell, next)
-          promise.resolve(Ok(Nil))
-        }
-        Ok(#(_, rate_limit.WaitUntil(reset_at))) ->
-          case
-            time.duration(
-              time.unix_milliseconds(reset_at) - time.unix_milliseconds(now),
-            )
-          {
-            Error(_) -> promise.resolve(Error(transport.InvalidTransportResult))
-            Ok(wait) -> {
-              use completed <- promise.await(sleeper(wait, cancellation))
-              case completed {
-                False -> promise.resolve(Error(transport.Cancelled))
-                True -> admit(cell, cancellation, sleeper, clock)
-              }
-            }
-          }
-      }
-    }
   }
 }
 
@@ -154,12 +140,3 @@ fn retry_policy() -> retry.Policy {
     )
   policy
 }
-
-@external(javascript, "./runtime_ffi.mjs", "new_cell")
-fn new_cell(value: value) -> Cell(value)
-
-@external(javascript, "./runtime_ffi.mjs", "read_cell")
-fn read_cell(cell: Cell(value)) -> value
-
-@external(javascript, "./runtime_ffi.mjs", "write_cell")
-fn write_cell(cell: Cell(value), value: value) -> Nil

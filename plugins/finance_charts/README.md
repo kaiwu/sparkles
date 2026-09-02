@@ -24,7 +24,9 @@ interpolation, ranking, signal interpretation, or trade decision.
 Entitlement and limitation values are canonical lowercase identifiers containing
 only `a-z`, `0-9`, and underscore. A `raw`, `split_adjusted`,
 `dividend_adjusted`, or `total_return_adjusted` basis uses a null adjustment
-label; only `provider_adjusted` accepts its exact provider basis label.
+label. `provider_adjusted` and `provider_defined` require an exact provider
+basis label; `provider_defined` preserves a source whose adjustment semantics
+remain unknown and does not imply that its bars are raw or adjusted.
 
 The normal Pi call passes `seriesReceipt`, `maximumBars`, and optional
 `indicatorReceipts` returned as `chartHandoffReceipt` by SMA, RSI, or ATR. The

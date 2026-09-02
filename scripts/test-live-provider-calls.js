@@ -116,6 +116,7 @@ const pluginChecks = [
     "cn_market_data",
     "cn_raw_vendor_history",
     {
+      provider: "eastmoney",
       venue: "sse",
       code: "600519",
       startDate: "2024-08-01",
@@ -123,6 +124,22 @@ const pluginChecks = [
       limit: 10,
     },
     [request("GET", "push2his.eastmoney.com", "/api/qt/stock/kline/get")],
+  ),
+  pluginCheck(
+    "sina.history.cn.star50",
+    "Sina Finance",
+    "cn_market_data",
+    "cn_raw_vendor_history",
+    {
+      provider: "sina",
+      venue: "sse",
+      code: "000688",
+      instrumentKind: "benchmark_index",
+      startDate: "2026-08-25",
+      endDate: "2026-09-02",
+      limit: 10,
+    },
+    [request("GET", "money.finance.sina.com.cn", "/quotes_service/api/json_v2.php/CN_MarketData.getKLineData")],
   ),
   pluginCheck(
     "eastmoney.history.hk",
@@ -390,6 +407,7 @@ const pluginChecks = [
 ];
 
 const directChecks = [
+  directSinaHistory("sina.history.cn", "sh600519"),
   directDocument(
     "cninfo.document",
     "CNINFO",
@@ -414,6 +432,23 @@ const directChecks = [
     ["application/rss+xml", "application/xml", "text/xml"],
   ),
 ];
+
+function directSinaHistory(id, symbol) {
+  const url =
+    `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=${symbol}&scale=240&ma=no&datalen=5`;
+  return direct(id, "Sina Finance", url, async (response) => {
+    const body = await boundedText(response, 1_000_000);
+    const rows = JSON.parse(body);
+    invariant(Array.isArray(rows) && rows.length > 0 && rows.length <= 5, `${id} returned an invalid row budget`);
+    for (const row of rows) {
+      invariant(row && typeof row === "object", `${id} returned a non-object row`);
+      for (const field of ["day", "open", "high", "low", "close", "volume"]) {
+        invariant(typeof row[field] === "string" && row[field].length > 0, `${id} returned invalid ${field}`);
+      }
+    }
+    return { responseBytes: Buffer.byteLength(body), rows: rows.length, decoderValidated: false };
+  });
+}
 
 if (import.meta.main) {
   await main().catch((error) => {

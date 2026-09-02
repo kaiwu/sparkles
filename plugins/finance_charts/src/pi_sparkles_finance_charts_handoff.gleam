@@ -27,9 +27,10 @@ pub fn resolve(
         series_handoff.bars(series),
         maximum_bars,
       ))
-      use adjustment <- result.try(
-        adjustment(series_handoff.adjustment(series)),
-      )
+      use adjustment <- result.try(adjustment(
+        series_handoff.adjustment(series),
+        series_handoff.provider(series),
+      ))
       use indicators <- result.try(resolve_indicators(
         context,
         receipt,
@@ -231,9 +232,17 @@ fn latest_bars(
   }
 }
 
-fn adjustment(value: String) -> Result(decode.AdjustmentInput, String) {
+fn adjustment(
+  value: String,
+  provider: String,
+) -> Result(decode.AdjustmentInput, String) {
   case value {
     "raw" -> Ok(decode.AdjustmentInput("raw", None))
+    "unknown" ->
+      Ok(decode.AdjustmentInput(
+        "provider_defined",
+        Some(provider <> "_source_adjustment_semantics_unknown"),
+      ))
     other -> Error("Unsupported session-bound OHLCV adjustment " <> other)
   }
 }
