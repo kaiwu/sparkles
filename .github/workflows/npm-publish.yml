@@ -92,4 +92,6 @@ jobs:
         run: npm publish "${{ steps.tarballs.outputs.dsh_path }}" --tag latest --access public --ignore-scripts
 
       - name: Verify both latest tags
-        run: bun run npm:release:latest -- all --check
+        run: |
+          bun run npm:release:latest -- pi --check
+          bun run npm:release:latest -- dsh --check

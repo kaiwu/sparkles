@@ -52,7 +52,7 @@ release verification load the T6 all-in-one aggregate entrypoint once so all
 The loader rejects earlier-tier and per-plugin target overrides.
 
 The T5 selection remains the historical 0.1.4 boundary. T6 is ProductUseful
-with zero omissions, partials, or blockers and is selected for version 0.1.10.
+with zero omissions, partials, or blockers and is selected for version 0.1.11.
 
 ## Local consumer verification
 
@@ -65,7 +65,7 @@ register the entrypoint through an offline, sessionless RPC request. Both
 startup processes have a 15-second hard limit. For a manual equivalent:
 
 ```sh
-npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.10.tgz
+npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.11.tgz
 printf '%s\n' '{"id":"startup","type":"get_state"}' | pi --no-extensions \
   --extension ./node_modules/@pi-sparkles/pi-sparkles/index.js \
   --mode rpc --no-session --offline
@@ -105,7 +105,7 @@ because a trusted-publisher relationship cannot be attached until the package
 exists. The explicit command is:
 
 ```sh
-npm publish ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.10.tgz --tag latest --access public
+npm publish ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.11.tgz --tag latest --access public
 bun run npm:release:latest -- pi
 ```
 
@@ -120,10 +120,10 @@ a protected GitHub `npm` environment if review approval is required.
 After publication, verify the registry artifact and install through Pi:
 
 ```sh
-npm view @pi-sparkles/pi-sparkles@0.1.10 \
+npm view @pi-sparkles/pi-sparkles@0.1.11 \
   name version dist.integrity repository --json
 npm view @pi-sparkles/pi-sparkles dist-tags.latest
-pi install npm:@pi-sparkles/pi-sparkles@0.1.10
+pi install npm:@pi-sparkles/pi-sparkles@0.1.11
 ```
 
 `npm:release:latest` is an authenticated, registry-mutating command. It first
@@ -196,7 +196,7 @@ npm view @dsh-sparkles/dsh-sparkles dist-tags.latest
 dsh plugin --profile <name> add @dsh-sparkles/dsh-sparkles@0.1.10
 ```
 
-The Pi `0.1.10` and DSH `0.1.10` maintenance releases remain independent. Move
+The Pi `0.1.11` and DSH `0.1.10` maintenance releases remain independent. Move
 each package's `latest` tag only after its own exact tarball has been explicitly
 published:
 

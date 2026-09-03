@@ -41,7 +41,8 @@ describe("npm release latest tags", () => {
     expect(workflow).toContain(
       "npm install --global @deepseek-ai/dsh@0.1.1-rc.2",
     );
-    expect(workflow).toContain("bun run npm:release:latest -- all --check");
+    expect(workflow).toContain("bun run npm:release:latest -- pi --check");
+    expect(workflow).toContain("bun run npm:release:latest -- dsh --check");
   });
 
   test("preflights, updates, and verifies both host identities", () => {

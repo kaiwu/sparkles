@@ -120,7 +120,7 @@ describe("all-in-one npm packaging", () => {
     expect(t6.omittedProposals).toEqual([]);
     expect(t6.partialImplementations).toEqual([]);
     expect(t6.openBlockers).toEqual([]);
-    expect(t6.packageVersion).toBe("0.1.10");
+    expect(t6.packageVersion).toBe("0.1.11");
     expect(t6.releasable).toBe(
       t6.includedTiers.at(-1).status === "product_useful",
     );

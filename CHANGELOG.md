@@ -5,6 +5,22 @@ here. Versions follow Semantic Versioning. The exact selected tier, plugin
 inventory, maturity, and content hashes remain authoritative in each tarball's
 `release-lock.json` and `aggregate-lock.json`.
 
+## 0.1.11 - 2026-09-03
+
+- Add an explicitly selected Sina daily-history alternative for mainland China,
+  including the reviewed SSE STAR 50 route. An Eastmoney failure only suggests
+  the source change; Sina is called only after the user chooses it in a separate
+  request.
+- Preserve Sina's unknown adjustment semantics as `provider_defined` through
+  series receipts, SMA, RSI, ATR, and charts, and cover the complete
+  `Eastmoney failure -> user-selected Sina history -> SMA -> chart` handoff.
+- Enforce shared process-local provider quotas across independently loaded
+  shells: one request per two seconds, one request in flight, bounded waiting,
+  and one attempt without automatic retry.
+- Re-run the content-locked clean-install and real plain-Pi loading gate for the
+  complete 135-plugin T6 entrypoint, retaining the native Pi 0.84.4 startup fix
+  from 0.1.10.
+
 ## 0.1.10 - 2026-09-01
 
 - Replace the `0.1.9` bootstrap's `Function`-created dynamic import with the
