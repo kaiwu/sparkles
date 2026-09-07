@@ -41,6 +41,7 @@ import {
 } from "./aggregate-bundle.js";
 import { DIST_DIR, ROOT, WORK_DIR, plugins } from "./modules.js";
 import { readTierManifest } from "./tiers.js";
+import { DSH_RUNTIME_PEERS } from "../dsh/runtime-contract.mjs";
 import { dshClientFactorySource } from "../dsh/client.js";
 
 const ALLOWED_TARGETS = new Set(["T5", "T6"]);
@@ -57,18 +58,7 @@ export const DSH_RUNTIME_DEPENDENCIES = {
   "@napi-rs/canvas": "1.0.3",
   "pdfjs-dist": "6.2.108",
 };
-export const DSH_RUNTIME_PEERS = {
-  "@deepseek-ai/dsh": "0.1.1-rc.2",
-  "@deepseek-ai/dsh-agent": "0.1.1-rc.2",
-  "@deepseek-ai/dsh-client-runtime": "0.1.1-rc.2",
-  "@deepseek-ai/dsh-client-ui-layout": "0.1.1-rc.2",
-  "@deepseek-ai/dsh-client-ui-tool": "0.1.1-rc.2",
-  "@deepseek-ai/dsh-commands": "0.1.1-rc.2",
-  "@deepseek-ai/dsh-session": "0.1.1-rc.2",
-  "@deepseek-ai/dsh-session-projection": "0.1.1-rc.2",
-  "@deepseek-ai/dsh-system-prompt": "0.1.1-rc.2",
-  "@deepseek-ai/dsh-tools": "0.1.1-rc.2",
-};
+export { DSH_RUNTIME_PEERS };
 
 /** Every file the DSH bundle emits; the npm packager consumes this inventory. */
 export const DSH_BUNDLE_FILES = [
@@ -503,6 +493,9 @@ mutate a paper or live order.
 
 ## Install
 
+Requires **DSH ${DSH_RUNTIME_PEERS["@deepseek-ai/dsh"]}**, the DSH 0.1.2 API.
+The host and service peers are pinned exactly; DSH 0.1.1 is unsupported.
+
 \`\`\`sh
 bun run dsh:bundle
 dsh plugin --profile <name> add ./dist/dsh/dsh-sparkles
@@ -664,7 +657,7 @@ export async function buildDshBundle(
       bundle: { patch: "./cordis.patch.yml" },
       client: {
         inject: [
-          "@deepseek-ai/dsh-client-runtime",
+          "@deepseek-ai/dsh-client-ui-session",
           "@deepseek-ai/dsh-client-ui-layout",
           "@deepseek-ai/dsh-client-ui-tool",
         ],
@@ -760,7 +753,7 @@ export function verifyDshBundle(directory, plan) {
     manifest.dsh?.client?.platform !== "web" ||
     JSON.stringify(manifest.dsh?.client?.inject) !==
       JSON.stringify([
-        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-session",
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-tool",
       ]) ||

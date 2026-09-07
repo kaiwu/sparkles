@@ -52,7 +52,7 @@
     "dsh:verify": "bun scripts/dsh-verify.js",
     "dsh:npm:pack": "bun scripts/dsh-npm-package.js",
     "dsh:npm:preview:verify": "bun test test/dsh test/workflow/dsh_npm_package.test.js && bun scripts/dsh-npm-package.js T6 --install-smoke && bun scripts/dsh-verify.js",
-    "dsh:npm:release:verify": "bun test test/workflow/dsh_npm_package.test.js && bun scripts/dsh-npm-package.js T6 --install-smoke --publish-dry-run --check-registry",
+    "dsh:npm:release:verify": "bun test test/dsh test/workflow/dsh_npm_package.test.js && bun scripts/dsh-npm-package.js T6 --install-smoke --publish-dry-run --check-registry",
     "test": "bun scripts/test.js",
     "clean": "bun scripts/clean.js"
   },

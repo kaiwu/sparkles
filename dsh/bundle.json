@@ -1,7 +1,7 @@
 {
   "schema_version": 5,
   "dsh_release": {
-    "version": "0.1.10",
+    "version": "0.1.12",
     "status": "product_useful",
     "target": "T6",
     "reason": null

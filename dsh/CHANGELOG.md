@@ -5,6 +5,21 @@ follow Semantic Versioning. The exact tier, plugin inventory, maturity, and
 content hashes remain authoritative in each tarball's `dsh-lock.json` and
 `release-lock.json`.
 
+## 0.1.12 - 2026-09-07
+
+- Require DSH 0.1.2-rc.1 explicitly for the host and all tested service peers.
+- Confirm the receipt fix after a real DSH restart: SMA (20/60/120), RSI,
+  and ATR successfully consume a newly acquired receipt in the resumed session.
+  Version 0.1.11 was the local manual-check candidate and was not published.
+- Depend on the current `dsh-client-ui-session` browser package instead of
+  the removed `dsh-client-runtime`, and verify every declared client dependency
+  exists in the installed web boot graph.
+- Read session receipts and leaf positions through `snapshotEvents()` so
+  saved OHLCV handoffs remain visible to SMA, RSI, ATR, and charts. Reject
+  incompatible session APIs explicitly instead of treating them as empty logs.
+- Verify receipt consumption, agent isolation, and dispose/resume restoration
+  against the installed DSH runtime and the locally installed release tarball.
+
 ## 0.1.10 - 2026-09-03
 
 - Preserve Sina's unknown OHLCV adjustment semantics as an explicit

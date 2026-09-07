@@ -67,11 +67,15 @@ function currentAgent(storage, operation) {
   return agent;
 }
 
+function sessionEvents(session) {
+  if (typeof session?.snapshotEvents !== "function") {
+    throw new Error("dsh-sparkles requires DSH 0.1.2-rc.1 session.snapshotEvents()");
+  }
+  return session.snapshotEvents();
+}
+
 function customEntries(agent) {
-  const events = Array.isArray(agent?.session?.events)
-    ? agent.session.events
-    : [...(agent?.session?.events ?? [])];
-  return events
+  return sessionEvents(agent.session)
     .filter(
       (event) =>
         event?.type === DSH_CUSTOM_EVENT &&
@@ -138,7 +142,10 @@ function bridgedContext({ storage, signal, bus, statusEvents }) {
     getSessionDir: () => cwd,
     getSessionId: () => (session ? String(session.id) : "dsh-unbound"),
     getSessionFile: () => null,
-    getLeafId: () => (session?.events?.length ? `dsh:${String(session.id)}:${session.events.at(-1).seq}` : null),
+    getLeafId: () => {
+      const last = session ? sessionEvents(session).at(-1) : undefined;
+      return last ? `dsh:${String(session.id)}:${last.seq}` : null;
+    },
     getEntries: () => (agent ? customEntries(agent) : []),
     getBranch: () => (agent ? customEntries(agent) : []),
     buildContextEntries: () => (agent ? customEntries(agent) : []),

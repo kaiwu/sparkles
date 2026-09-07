@@ -181,6 +181,9 @@ This is the DSH distribution of
 package, which reuses the same finance cores but owns separate Pi lifecycle and
 terminal presentation.
 
+Requires **DSH ${DSH_PEERS["@deepseek-ai/dsh"]}**, the DSH 0.1.2 API.
+The host and service peers are pinned exactly; DSH 0.1.1 is unsupported.
+
 Ask about a stock or ETF in everyday language. DSH Sparkles brings current market
 data, price history, company filings, fundamentals, and financial calculations
 into the conversation.
@@ -299,7 +302,7 @@ function dshNpmManifest(plan) {
       bundle: { patch: "./cordis.patch.yml" },
       client: {
         inject: [
-          "@deepseek-ai/dsh-client-runtime",
+          "@deepseek-ai/dsh-client-ui-session",
           "@deepseek-ai/dsh-client-ui-layout",
           "@deepseek-ai/dsh-client-ui-tool",
         ],
@@ -469,7 +472,7 @@ export function verifyDshNpmPackageDirectory(directory, expectedPlan) {
     manifest.dsh?.client?.platform !== "web" ||
     JSON.stringify(manifest.dsh?.client?.inject) !==
       JSON.stringify([
-        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-session",
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-tool",
       ]) ||
@@ -997,6 +1000,26 @@ if (globalThis.DOMMatrix !== undefined || globalThis.Path2D !== undefined) throw
       if (!dump.stdout.includes(`name: '@dsh-sparkles/dsh-sparkles'`) && !dump.stdout.includes('@dsh-sparkles/dsh-sparkles')) {
         throw new Error("Isolated dsh profile did not compose the dsh-sparkles bundle layer");
       }
+      // Exercise the installed tarball through the real Node-hosted services,
+      // including fresh/resumed receipt consumers. Config discovery alone does
+      // not execute a tool or prove that the session adapter matches the host.
+      requireSuccess(
+        runCaptured("node", [
+          "--input-type=module", "--eval",
+          `import { pathToFileURL } from "node:url";
+const { verifyInstalledDshWeb } = await import(pathToFileURL(process.argv[3]).href);
+const web = await verifyInstalledDshWeb(process.argv[4], process.argv[5]);
+const { verifyAgainstDshTools } = await import(pathToFileURL(process.argv[1]).href);
+const result = await verifyAgainstDshTools({ bundleEntry: process.argv[2] });
+if (result.skipped || !result.runtimeSmoke || !result.receiptHandoffs) {
+  throw new Error("Installed DSH runtime/receipt verification did not run");
+}
+console.log("Installed tarball runtime verified: " + JSON.stringify({ ...result, web }));`,
+          join(ROOT, "scripts", "dsh-verify.js"), entrypoint,
+          join(ROOT, "scripts", "dsh-web-smoke.mjs"), dshCommand, profileName,
+        ], { cwd: installation, env, timeout: 120_000, killSignal: "SIGKILL" }),
+        "installed DSH runtime and receipt resume",
+      );
     } finally {
       rmSync(dshHome, { recursive: true, force: true });
     }

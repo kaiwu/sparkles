@@ -9,14 +9,18 @@
 //   bun run dsh:verify
 
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
-import { DSH_OUTPUT_DIR } from "./dsh-bundle.js";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { DSH_RUNTIME_PEERS } from "../dsh/runtime-contract.mjs";
 import {
   OUTPUT_SCHEMA,
   translateParameters,
 } from "../dsh/schema-translate.mjs";
+
+const DSH_OUTPUT_DIR = fileURLToPath(new URL("../dist/dsh/dsh-sparkles/", import.meta.url));
 
 function resolveDshRuntime() {
   let dshBin;
@@ -26,6 +30,10 @@ function resolveDshRuntime() {
       encoding: "utf8",
     }).trim();
     const dshRoot = dirname(dirname(real));
+    const version = JSON.parse(readFileSync(join(dshRoot, "package.json"), "utf8")).version;
+    if (version !== DSH_RUNTIME_PEERS["@deepseek-ai/dsh"]) {
+      throw new Error(`DSH verification requires exact ${DSH_RUNTIME_PEERS["@deepseek-ai/dsh"]}; installed ${version}`);
+    }
     const packages = join(dshRoot, "node_modules", "@deepseek-ai");
     const entries = {
       agent: join(packages, "dsh-agent", "lib", "index.js"),
@@ -38,7 +46,8 @@ function resolveDshRuntime() {
       commands: join(packages, "dsh-commands", "lib", "index.js"),
     };
     return Object.values(entries).every(existsSync) ? entries : null;
-  } catch {
+  } catch (error) {
+    if (error.message?.startsWith("DSH verification requires")) throw error;
     return null;
   }
 }
@@ -88,7 +97,10 @@ const SAMPLES = {
   noParams: {},
 };
 
-export async function verifyAgainstDshTools({ log = console.log } = {}) {
+export async function verifyAgainstDshTools({
+  log = console.log,
+  bundleEntry = join(DSH_OUTPUT_DIR, "index.js"),
+} = {}) {
   const runtime = resolveDshRuntime();
   if (!runtime) {
     return { skipped: true, reason: "dsh CLI / dsh-tools not found" };
@@ -123,19 +135,19 @@ export async function verifyAgainstDshTools({ log = console.log } = {}) {
   if (failures.length > 0) {
     throw new Error(`DSH verification failed:\n- ${failures.join("\n- ")}`);
   }
-  const bundleEntry = join(DSH_OUTPUT_DIR, "index.js");
   let runtimeSmoke = false;
   let toolCount = 0;
   let scopedCounterparts = false;
   let overlayProjection = false;
   let chartPresentationMeta = false;
+  let receiptHandoffs = false;
   if (existsSync(bundleEntry)) {
     const [
       { Context },
       { default: SystemPrompt },
       { default: ToolRuntime },
       { default: CommandRuntime },
-      { default: SessionStore, SessionId },
+      { default: SessionStore, Session, SessionId },
       { default: SessionProjectionRegistry },
       { default: AgentRegistry, Inbox, agentEvents },
       { createScope },
@@ -382,7 +394,69 @@ export async function verifyAgainstDshTools({ log = console.log } = {}) {
       failures.push("watchlist state leaked between real DSH agent scopes");
     }
 
-    const retainedFirstSession = first.agent.session;
+    // Synthetic receipts exercise shared handoff laws for all three track labels;
+    // they make no provider or live-market conformance claim.
+    const receiptCases = [];
+    for (const [track, mic, timezone, priceUnit] of [
+      ["cn", "XSHG", "Asia/Shanghai", "CNY"],
+      ["hk", "XHKG", "Asia/Hong_Kong", "HKD"],
+      ["us", "XNAS", "America/New_York", "USD"],
+    ]) {
+      const rows = [
+        ["2026-02-18", "10.50", "11.00", "10.00", "10.85", "100", "1085"],
+        ["2026-02-19", "10.85", "11.10", "10.70", "10.92", "110", "1201"],
+        ["2026-02-20", "10.92", "11.20", "10.80", "10.95", "120", "1314"],
+        ["2026-02-24", "10.95", "11.05", "10.70", "10.88", "130", "1414"],
+        ["2026-02-25", "10.88", "11.10", "10.80", "10.91", "140", "1527"],
+      ];
+      const sourceReference = `fixture://dsh-verify/receipt/${track}`;
+      const retrievedAtUnixMilliseconds = 1_770_000_000_000;
+      const canonical = `${sourceReference}\nretrievedAtUnixMilliseconds=${retrievedAtUnixMilliseconds}\ndate,open,high,low,close,volume,amount\n${rows.map((row) => row.join(",")).join("\n")}`;
+      const seriesReceipt = createHash("sha256").update(canonical).digest("hex");
+      first.agent.session.append("pi-sparkles/custom", {
+        customType: "pi_sparkles_finance_ohlcv.series_handoff.v1",
+        data: {
+          schema: "pi-sparkles/ohlcv-series-handoff", schemaVersion: 1,
+          track, mic, timezone, priceUnit, instrumentId: `fixture-${track}`,
+          sourceLanguage: "en", volumeUnit: "provider_defined_unknown",
+          adjustment: "raw", provider: "dsh-verify-fixture", sourceReference,
+          acquisitionReceipt: seriesReceipt, retrievedAtUnixMilliseconds,
+          sourceCutoffUnixMilliseconds: null, entitlement: "fixture_local_analysis",
+          limitations: ["fixture_only"],
+          bars: rows.map(([date, open, high, low, close, volume, amount]) =>
+            ({ date, open, high, low, close, volume, amount })),
+        },
+      });
+      const calculation = {
+        formulaVariant: "sma_v1", period: 3, windowVariant: "slot_window_v1",
+        parseablePolicy: "exclude_parseable_with_checks",
+        rounding: { mode: "half_up", policy: "per_step", outputScale: 2, intermediateScale: 6 },
+      };
+      const args = { seriesReceipt, calculation, projection: { kind: "compact", priorOffset: 1 } };
+      const sma = await executeFor(first.agent, "sma", args, `receipt-${track}-sma`);
+      assert.equal(sma.value?.details?.latestValue?.output?.value, "10.91", `${track} SMA receipt lookup`);
+      const indicatorReceipts = [sma.value.details.chartHandoffReceipt];
+      for (const [name, policy] of [
+        ["rsi", { formulaVariant: "rsi_wilder_v1", seedVariant: "seed_wilder_first_n", zeroZeroConvention: "zero_zero_unperformed_v1" }],
+        ["atr", { formulaVariant: "atr_wilder_v1", seedVariant: "seed_wilder_tr_mean_v1", firstTrueRange: "tr_first_hl_v1" }],
+      ]) {
+        const result = await executeFor(first.agent, name, {
+          ...args, calculation: { ...calculation, ...policy, gapPolicy: "stop_at_gap_v1" },
+        }, `receipt-${track}-${name}`);
+        assert.equal(result.value?.details?.latestValue?.state, "known", `${track} ${name} receipt lookup`);
+        indicatorReceipts.push(result.value.details.chartHandoffReceipt);
+      }
+      const rejected = await executeFor(second.agent, "sma", args, `receipt-${track}-other-agent`);
+      assert.match(JSON.stringify(rejected.content), /No active-session OHLCV handoff matched/, `${track} cross-agent rejection`);
+      receiptCases.push({ track, args, indicatorReceipts });
+    }
+    // Detach through a JSON round trip, as persistence does. A retained live
+    // Session object would not prove that a new runtime instance can restore it.
+    const retainedFirstSession = Session.create(
+      first.agent.session.id,
+      JSON.parse(JSON.stringify(first.agent.session.snapshotEvents())),
+      JSON.parse(JSON.stringify(first.agent.session.header)),
+    );
     first.unregister();
     await first.scope.dispose();
     const resumed = createAgent(
@@ -405,6 +479,16 @@ export async function verifyAgainstDshTools({ log = console.log } = {}) {
     if (typeof resumedStatus !== "string" || !resumedStatus.startsWith("CN · CNY ·")) {
       failures.push(`finance track overlay did not restore on resume: ${String(resumedStatus)}`);
     }
+    for (const { track, args, indicatorReceipts } of receiptCases) {
+      const sma = await executeFor(resumed.agent, "sma", args, `receipt-${track}-resumed`);
+      assert.equal(sma.value?.details?.latestValue?.output?.value, "10.91", `${track} restored SMA receipt`);
+      const chart = await executeFor(resumed.agent, "chart_ohlcv", {
+        seriesReceipt: args.seriesReceipt, maximumBars: 5, indicatorReceipts,
+      }, `receipt-${track}-restored-chart`);
+      assert.equal(chart.meta?.valid, true, `${track} restored OHLCV and indicator receipts`);
+      assert.equal(chart.meta?.chart?.bars?.length, 5);
+    }
+    receiptHandoffs = true;
 
     const result = await ctx.tools.execute({
       agent: resumed.agent,
@@ -494,6 +578,7 @@ export async function verifyAgainstDshTools({ log = console.log } = {}) {
     scopedCounterparts,
     overlayProjection,
     chartPresentationMeta,
+    receiptHandoffs,
   };
 }
 
@@ -507,7 +592,7 @@ if (import.meta.main) {
     console.log(
       `dsh:verify passed ${result.cases} representative schemas against real dsh-tools` +
         (result.runtimeSmoke
-          ? ` and executed the generated bundle (${result.toolCount} tools, scoped counterparts=${result.scopedCounterparts}, overlay projection=${result.overlayProjection}, chart metadata=${result.chartPresentationMeta}) in the real DSH runtime`
+          ? ` and executed the generated bundle (${result.toolCount} tools, scoped counterparts=${result.scopedCounterparts}, overlay projection=${result.overlayProjection}, chart metadata=${result.chartPresentationMeta}, receipt handoffs/resume=${result.receiptHandoffs}) in the real DSH runtime`
           : "; generated bundle not present, runtime execution skipped"),
     );
   } catch (error) {

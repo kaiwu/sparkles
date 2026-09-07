@@ -9,6 +9,10 @@ host effects are adapted. Pi users install the sibling
 [`@pi-sparkles/pi-sparkles`](https://www.npmjs.com/package/@pi-sparkles/pi-sparkles)
 package instead.
 
+Requires **DSH 0.1.2-rc.1** (the 0.1.2 prerelease API), with exact host and
+service peers. DSH 0.1.1 is unsupported. Session receipts use the host's
+`snapshotEvents()` API, including after session resume.
+
 - `scripts/dsh-bundle.js` builds the bundle (`bun run dsh:bundle`).
 - `scripts/dsh-npm-package.js` builds the separate npm release.
 - `scripts/dsh-verify.js` validates schemas and executes the generated bundle
@@ -95,12 +99,20 @@ dsh --profile <name> --dump-config
 `bun test test/dsh test/workflow/dsh_npm_package.test.js` covers the adapter,
 parallel invocation isolation, per-agent state ownership, lifecycle/session
 mapping, overlay component/projection, inline chart metadata/card, release gate, locks,
-and npm inventory. `bun run dsh:verify` currently uses DSH 0.1.1-rc.2
+and npm inventory. `bun run dsh:verify` currently uses DSH 0.1.2-rc.1
 implementation to create two real agent scopes, expose all 246 effective tools,
 verify the shared prompt and track projection, and prove that a watchlist
-mutation cannot leak to the second agent.
+mutation cannot leak to the second agent. It also verifies CN/HK/US receipt
+consumers, cross-agent rejection, and OHLCV/indicator restoration in a fresh
+Session instance after dispose/resume. These fixtures prove shared handoff
+behavior, not provider or live-market conformance.
 
-The generated package declares the exact `@deepseek-ai/dsh@0.1.1-rc.2` host
+The npm install smoke installs the exact tarball into a clean prefix/profile,
+boots that profile through the installed DSH CLI, checks authenticated page
+and client asset loading, then runs the receipt/runtime checks under Node
+against that installed package. Asset checks are structural, not visual QA.
+
+The generated package declares the exact `@deepseek-ai/dsh@0.1.2-rc.1` host
 peer, pins its tested DSH service peers to the same version, and pins
 `pdfjs-dist` plus its Bun-compatible `@napi-rs/canvas` polyfill. PDF runtime
 state is initialized only by a PDF operation, never while the DSH entrypoint

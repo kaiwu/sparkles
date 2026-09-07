@@ -82,7 +82,7 @@ function fakeAgent(id = "agent-1") {
     session: {
       id: `session-${id}`,
       header: { cwd: `/work/${id}` },
-      events,
+      snapshotEvents: () => Object.freeze([...events]),
       append(type, data) {
         const event = { type, data, seq: events.length, time: Date.now() };
         events.push(event);
@@ -355,8 +355,30 @@ describe("pi-api facade", () => {
     expect(entries[0].customType).toBe("finance_cache.receipt");
     expect(entries[0].data).toEqual({ track: "cn" });
     expect(entries[0].type).toBe("custom");
-    expect(agent.session.events[0].type).toBe("pi-sparkles/custom");
+    expect(agent.session.snapshotEvents()[0].type).toBe("pi-sparkles/custom");
     expect(captured.cwd).toBe("/work/agent-1");
+    expect(captured.sessionManager.getLeafId()).toBe("dsh:session-agent-1:0");
+    agent.session.append(DSH_CUSTOM_EVENT, { customType: "later", data: {} });
+    expect(captured.sessionManager.getEntries()).toHaveLength(2);
+    expect(captured.sessionManager.getLeafId()).toBe("dsh:session-agent-1:1");
+    expect(entries).toHaveLength(1);
+  });
+
+  test("rejects an incompatible session API instead of reporting missing receipts", async () => {
+    const ctx = fakeCtx();
+    const api = createPiApi({ ctx });
+    api.registerTool({
+      name: "read-session",
+      parameters: { type: "object", properties: {} },
+      execute: async (_id, _args, _signal, _update, context) => {
+        context.sessionManager.getBranch();
+      },
+    });
+    const agent = fakeAgent();
+    delete agent.session.snapshotEvents;
+    agent.session.events = [];
+    await expect(ctx.__tools[0].execute({}, toolRunContext(agent)))
+      .rejects.toThrow("requires DSH 0.1.2-rc.1 session.snapshotEvents()");
   });
 
   test("session-bound OHLCV receipts feed short indicator calls without crossing DSH agents", async () => {
@@ -480,8 +502,8 @@ describe("pi-api facade", () => {
       expect(history.details.seriesReceipt).not.toBe(
         history.details.acquisitionReceipt,
       );
-      expect(owner.session.events).toHaveLength(1);
-      expect(owner.session.events[0]).toMatchObject({
+      expect(owner.session.snapshotEvents()).toHaveLength(1);
+      expect(owner.session.snapshotEvents()[0]).toMatchObject({
         type: DSH_CUSTOM_EVENT,
         data: {
           customType: "pi_sparkles_finance_ohlcv.series_handoff.v1",
@@ -599,7 +621,7 @@ describe("pi-api facade", () => {
       expect(history.content[0].text).toContain(
         "No automatic fallback was performed",
       );
-      expect(owner.session.events[0].data.data).toMatchObject({
+      expect(owner.session.snapshotEvents()[0].data.data).toMatchObject({
         provider: "sina",
         track: "cn",
         mic: "XSHG",
@@ -678,7 +700,7 @@ describe("pi-api facade", () => {
         },
       });
       expect(failure.message).toContain("Sina was not called");
-      expect(owner.session.events).toHaveLength(0);
+      expect(owner.session.snapshotEvents()).toHaveLength(0);
 
       const history = await historyTool.execute(
         { provider: "sina", ...baseInput },
@@ -698,7 +720,7 @@ describe("pi-api facade", () => {
       expect(history.content[0].text).toContain(
         "DATA SOURCE CHANGED BY EXPLICIT USER CHOICE: eastmoney -> sina",
       );
-      expect(owner.session.events[0].data.data).toMatchObject({
+      expect(owner.session.snapshotEvents()[0].data.data).toMatchObject({
         provider: "sina",
         track: "cn",
         instrumentId: "000688",
@@ -774,11 +796,11 @@ describe("pi-api facade", () => {
       rawInput: "",
       signal: new AbortController().signal,
     });
-    expect(agent.session.events.map((event) => event.type)).toEqual([
+    expect(agent.session.snapshotEvents().map((event) => event.type)).toEqual([
       "pi-sparkles/status",
       "pi-sparkles/status",
     ]);
-    expect(agent.session.events.map((event) => event.data)).toEqual([
+    expect(agent.session.snapshotEvents().map((event) => event.data)).toEqual([
       { key: "finance-track", text: "CN · CNY" },
       { key: "finance-track", text: null },
     ]);
@@ -1000,8 +1022,8 @@ describe("pi-api facade", () => {
     await root.__emit("agent/session-start", { agent: first, source: "startup" });
     await root.__emit("agent/session-start", { agent: second, source: "resume" });
     expect(starts).toEqual(["session-first", "session-second"]);
-    expect(first.session.events.at(-1).data.text).toBe("count:1");
-    expect(second.session.events.at(-1).data.text).toBe("count:1");
+    expect(first.session.snapshotEvents().at(-1).data.text).toBe("count:1");
+    expect(second.session.snapshotEvents().at(-1).data.text).toBe("count:1");
     const firstResult = await first.ctx.__tools[0].execute(
       {},
       toolRunContext(first, "first-counter"),
