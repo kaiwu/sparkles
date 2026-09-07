@@ -26,6 +26,17 @@ service peers. DSH 0.1.1 is unsupported. Session receipts use the host's
   `shell.overlay` for track status and keyed `tool.call.toolview` for inline
   OHLCV output.
 
+## Release version selection
+
+DSH's npm version comes only from `dsh/bundle.json` and its own published
+`@dsh-sparkles/dsh-sparkles` history. Never derive the next version from Pi,
+the DSH host, or an already built/installed local candidate. Inspect with
+`bun run npm:release:preflight -- dsh` before changing a version, and follow
+[the mandatory release procedure](../NPM_RELEASE.md#version-selection-and-publication-both-channels).
+Reuse an unpublished candidate after successful manual checks; those checks
+are not another release. CI requires explicit DSH baseline/version inputs and
+a `dsh-v<version>` tag, and publishes only DSH.
+
 ## Inventory and release boundary
 
 The effective inventory is `global-safe Pi shells + per-agent Pi counterparts

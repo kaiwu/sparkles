@@ -120,6 +120,60 @@ adapters, or README claims. Unfinished work remains private compilable code or
 explicit tier backlog. This checkpoint is an integrity rule, not plugin-level
 delivery or promotion.
 
+## Independent npm Version Selection (Mandatory)
+
+Pi (`@pi-sparkles/pi-sparkles`) and DSH (`@dsh-sparkles/dsh-sparkles`) are
+separate npm packages with independent version sequences. Releasing either
+must not automatically bump, publish, retag, or require a release of the other.
+There is no shared release counter; each increments from its own published history.
+Never assume either package's next version from the other package, a
+repository/global tag, the DSH host version,
+a local manifest, a packed tarball, or a locally installed manual-test candidate.
+A local candidate does not consume an npm version. A request for the "next
+release" requires fresh registry evidence for the selected package; it is not
+permission to increment whichever local version happens to be present.
+
+Before editing a release version, run `bun run npm:release:preflight -- pi`
+or `bun run npm:release:preflight -- dsh`. Read that exact package's published
+versions and dist-tags, and compare its local candidate with its own published
+baseline. Pi's version source is root `package.json`; DSH's is
+`dsh/bundle.json` → `dsh_release.version`. Required host versions are separate
+compatibility metadata, never package release counters.
+
+State the selected package name, observed published baseline, local candidate
+and whether it is published, exact proposed version, and reason before doing
+the bump. If the user already specified a version, validate it; otherwise choose
+the smallest appropriate SemVer increment from that channel's published history.
+Reuse an unpublished candidate when it is the intended next release. Do not
+increment it merely because it was built, tested, installed, or reboot-tested.
+A skipped patch or minor/major change requires an explicit recorded reason.
+Registry errors or conflicting evidence must stop version selection; never guess.
+
+Run the explicit preflight with `--base` and `--version`, the selected host's
+verification/install/manual-check steps, then repeat the preflight with
+`--artifact` immediately before publishing. Preserve its JSON evidence with the
+verified tarball. CI requires `pi-v<version>` or `dsh-v<version>` and publishes
+one explicitly selected package per invocation. There is no default or `all`
+release lane. A request for both requires two independent version decisions and
+gates. Website versions must come from each package's confirmed publication.
+See [NPM_RELEASE.md](NPM_RELEASE.md) for the complete procedure.
+
+A shared core Gleam fix may require releasing both packages in one coordinated
+batch. Inspect its impact and verify both host legs. When both releases are in
+scope, choose each next version from its own npm history, update both independent
+version sources/changelogs, and complete both release gates and requested manual
+checks before publishing. The same reviewed commit may carry two channel tags
+with different versions. Publish two separately verified tarballs through two
+channel-specific invocations; never substitute one shared version or infer that
+one successful publication completes the other. Retain separate evidence and
+report each package's publication status, including any partial batch failure.
+
+The 2026-09-07 DSH release should have reused the unpublished `0.1.11`
+candidate after published DSH `0.1.10`; publishing `0.1.12` was a numbering
+mistake. Leave the published `0.1.12` and its dist-tag unchanged; do not backfill
+`0.1.11` or renumber either channel to hide the mistake. Future decisions must
+inspect the registry again, without preassigning another version here.
+
 ## Pi and DSH Host Lanes
 
 Pi and DeepSeek Harness (DSH) are separate host and release lanes over the same

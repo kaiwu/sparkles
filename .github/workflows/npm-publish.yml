@@ -3,6 +3,25 @@ name: Publish Sparkles npm packages
 on:
   workflow_dispatch:
     inputs:
+      lane:
+        description: Select exactly one independent npm package
+        required: true
+        type: choice
+        options:
+          - pi
+          - dsh
+      version:
+        description: Exact reviewed package version (never inferred from the other channel)
+        required: true
+        type: string
+      base:
+        description: Highest stable version observed in this package's npm history
+        required: true
+        type: string
+      reason:
+        description: Required for any departure from this package's next patch version
+        required: false
+        type: string
       confirmation:
         description: Type publish to authorize the registry mutation
         required: true
@@ -13,7 +32,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: npm-publish-sparkles
+  group: npm-publish-sparkles-${{ inputs.lane }}
   cancel-in-progress: false
 
 jobs:
@@ -21,6 +40,11 @@ jobs:
     if: inputs.confirmation == 'publish'
     runs-on: ubuntu-24.04
     environment: npm
+    env:
+      RELEASE_LANE: ${{ inputs.lane }}
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_BASE: ${{ inputs.base }}
+      RELEASE_REASON: ${{ inputs.reason }}
     steps:
       - name: Check out the selected tag
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -44,54 +68,65 @@ jobs:
           gleam-version: 1.18.0
           version-type: strict
 
-      - name: Require an immutable version tag
-        shell: bash
+      - name: Validate the selected channel, version, baseline, and immutable tag
         run: |
-          version="$(node --input-type=module -e "import manifest from './package.json' with { type: 'json' }; process.stdout.write(manifest.version)")"
-          test "$GITHUB_REF" = "refs/tags/v${version}"
+          bun run npm:release:preflight -- "$RELEASE_LANE" --base "$RELEASE_BASE" --version "$RELEASE_VERSION" --reason "$RELEASE_REASON" --ref "$GITHUB_REF"
 
       - name: Install locked build dependencies
         run: bun install --frozen-lockfile
 
-      - name: Install the tested Pi and DSH hosts
+      - name: Install the selected package's tested host
         run: |
-          npm install --global @earendil-works/pi-coding-agent@0.84.1
-          npm install --global @deepseek-ai/dsh@0.1.2-rc.1
+          case "$RELEASE_LANE" in
+            pi) npm install --global @earendil-works/pi-coding-agent@0.84.1 ;;
+            dsh) npm install --global @deepseek-ai/dsh@0.1.2-rc.1 ;;
+            *) exit 1 ;;
+          esac
 
-      - name: Build and verify both T6 releases
-        run: |
-          bun run npm:release:verify
-          bun run dsh:npm:release:verify
+      - name: Test the release procedure
+        run: bun run npm:release:procedure:test
 
-      - name: Resolve the locked tarball paths
-        id: tarballs
+      - name: Build and verify the selected T6 release
         shell: bash
         run: |
-          pi_filename="$(node --input-type=module -e "import record from './dist/npm/t6/npm-pack.json' with { type: 'json' }; process.stdout.write(record.tarball)")"
-          dsh_filename="$(node --input-type=module -e "import record from './dist/dsh/npm/t6/npm-pack.json' with { type: 'json' }; process.stdout.write(record.tarball)")"
-          printf 'pi_path=dist/npm/t6/%s\n' "$pi_filename" >> "$GITHUB_OUTPUT"
-          printf 'dsh_path=dist/dsh/npm/t6/%s\n' "$dsh_filename" >> "$GITHUB_OUTPUT"
+          case "$RELEASE_LANE" in
+            pi) bun run npm:release:verify ;;
+            dsh) bun run dsh:npm:release:verify ;;
+            *) exit 1 ;;
+          esac
 
-      - name: Retain the reviewed release artifact
+      - name: Recheck registry history and the exact locked artifact
+        id: tarball
+        shell: bash
+        run: |
+          case "$RELEASE_LANE" in
+            pi) release_directory=dist/npm/t6 ;;
+            dsh) release_directory=dist/dsh/npm/t6 ;;
+            *) exit 1 ;;
+          esac
+          bun run npm:release:preflight -- "$RELEASE_LANE" --base "$RELEASE_BASE" --version "$RELEASE_VERSION" --reason "$RELEASE_REASON" --ref "$GITHUB_REF" --artifact "$release_directory" > release-preflight.json
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const record = JSON.parse(readFileSync('release-preflight.json', 'utf8'));
+          appendFileSync(process.env.GITHUB_OUTPUT, `path=${record.tarball}\n`);
+          NODE
+          printf 'directory=%s\n' "$release_directory" >> "$GITHUB_OUTPUT"
+
+      - name: Retain the reviewed release artifact and registry evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: sparkles-npm-T6
+          name: sparkles-${{ inputs.lane }}-${{ inputs.version }}-T6
           path: |
-            ${{ steps.tarballs.outputs.pi_path }}
-            ${{ steps.tarballs.outputs.dsh_path }}
-            dist/npm/*/npm-pack.json
-            dist/npm/*/RELEASE_SHA256SUMS
-            dist/dsh/npm/*/npm-pack.json
-            dist/dsh/npm/*/RELEASE_SHA256SUMS
+            ${{ steps.tarball.outputs.path }}
+            ${{ steps.tarball.outputs.directory }}/npm-pack.json
+            ${{ steps.tarball.outputs.directory }}/RELEASE_SHA256SUMS
+            release-preflight.json
           if-no-files-found: error
 
-      - name: Publish the Pi package through npm trusted publishing
-        run: npm publish "${{ steps.tarballs.outputs.pi_path }}" --tag latest --access public --ignore-scripts
+      - name: Publish only the selected package through npm trusted publishing
+        env:
+          RELEASE_TARBALL: ${{ steps.tarball.outputs.path }}
+        run: npm publish "$RELEASE_TARBALL" --tag latest --access public --ignore-scripts
 
-      - name: Publish the DSH package through npm trusted publishing
-        run: npm publish "${{ steps.tarballs.outputs.dsh_path }}" --tag latest --access public --ignore-scripts
-
-      - name: Verify both latest tags
-        run: |
-          bun run npm:release:latest -- pi --check
-          bun run npm:release:latest -- dsh --check
+      - name: Verify the selected latest tag
+        run: bun run npm:release:latest -- "$RELEASE_LANE" --version "$RELEASE_VERSION" --check

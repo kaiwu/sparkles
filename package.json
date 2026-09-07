@@ -54,7 +54,9 @@
     "dsh:npm:preview:verify": "bun test test/dsh test/workflow/dsh_npm_package.test.js && bun scripts/dsh-npm-package.js T6 --install-smoke && bun scripts/dsh-verify.js",
     "dsh:npm:release:verify": "bun test test/dsh test/workflow/dsh_npm_package.test.js && bun scripts/dsh-npm-package.js T6 --install-smoke --publish-dry-run --check-registry",
     "test": "bun scripts/test.js",
-    "clean": "bun scripts/clean.js"
+    "clean": "bun scripts/clean.js",
+    "npm:release:preflight": "bun scripts/npm-release-preflight.js",
+    "npm:release:procedure:test": "bun test test/workflow/npm_release_latest.test.js test/workflow/npm_release_preflight.test.js"
   },
   "dependencies": {
     "@napi-rs/canvas": "1.0.3",

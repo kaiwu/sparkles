@@ -11,15 +11,17 @@ export const RELEASE_HOSTS = Object.freeze({
 export function releaseVersionForLane({ lane, piVersion, dshVersion }) {
   if (lane === "pi") return piVersion;
   if (lane === "dsh") return dshVersion;
-  if (lane !== "all") {
-    throw new Error(`unknown release lane: ${lane}; expected pi, dsh, or all`);
+  throw new Error(`explicit release lane required: expected pi or dsh, got ${lane}`);
+}
+
+export function readReleaseVersion(lane, read = readFileSync) {
+  if (!Object.hasOwn(RELEASE_HOSTS, lane)) {
+    throw new Error("explicit release lane required: expected pi or dsh");
   }
-  if (piVersion !== dshVersion) {
-    throw new Error(
-      `coordinated release requires matching Pi and DSH versions, got ${piVersion} and ${dshVersion}`,
-    );
-  }
-  return piVersion;
+  const source = JSON.parse(read(new URL(
+    lane === "pi" ? "../package.json" : "../dsh/bundle.json", import.meta.url,
+  ), "utf8"));
+  return lane === "pi" ? source.version : source.dsh_release.version;
 }
 
 function parseNpmScalar(output, label) {
@@ -39,7 +41,7 @@ function parseNpmScalar(output, label) {
   return text;
 }
 
-function runNpm(args, { inherit = false } = {}) {
+export function runNpm(args, { inherit = false } = {}) {
   const result = spawnSync("npm", args, {
     encoding: "utf8",
     env: process.env,
@@ -61,7 +63,7 @@ function runNpm(args, { inherit = false } = {}) {
 
 export function releaseLatest({
   version,
-  lane = "all",
+  lane,
   checkOnly = false,
   run = runNpm,
 }) {
@@ -69,16 +71,12 @@ export function releaseLatest({
     throw new Error(`invalid release version: ${version}`);
   }
 
-  const selected =
-    lane === "all"
-      ? Object.entries(RELEASE_HOSTS)
-      : RELEASE_HOSTS[lane]
-        ? [[lane, RELEASE_HOSTS[lane]]]
-        : null;
-  if (!selected) throw new Error(`unknown release lane: ${lane}; expected pi, dsh, or all`);
+  if (!Object.hasOwn(RELEASE_HOSTS, lane)) {
+    throw new Error("explicit release lane required: expected pi or dsh");
+  }
+  const selected = [[lane, RELEASE_HOSTS[lane]]];
 
-  // Preflight every selected host before changing any tag so a coordinated
-  // release cannot start when one exact package version is absent.
+  // Confirm this lane's exact publication before changing its tag.
   for (const [, packageName] of selected) {
     const published = parseNpmScalar(
       run(["view", `${packageName}@${version}`, "version", "--json", "--registry", NPM_REGISTRY]),
@@ -113,32 +111,31 @@ export function releaseLatest({
   return verified;
 }
 
-function parseCli(args) {
-  let lane = "all";
+export function parseLatestCli(args) {
+  let lane;
+  let version;
   let checkOnly = false;
-  for (const arg of args) {
-    if (arg === "--check") checkOnly = true;
-    else if (arg === "pi" || arg === "dsh" || arg === "all") lane = arg;
-    else throw new Error(`unknown argument: ${arg}; expected pi, dsh, all, or --check`);
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--version") {
+      if (version !== undefined || !args[i + 1] || args[i + 1].startsWith("--")) {
+        throw new Error("--version requires one explicit value and cannot be repeated");
+      }
+      version = args[++i];
+    }
+    else if (arg === "--check") checkOnly = true;
+    else if ((arg === "pi" || arg === "dsh") && !lane) lane = arg;
+    else throw new Error(`unknown argument: ${arg}; expected pi or dsh, --version <version>, or --check`);
   }
-  return { lane, checkOnly };
+  if (!lane) throw new Error("explicit release lane required: expected pi or dsh");
+  if (!checkOnly && !version) throw new Error("tag mutation requires explicit --version");
+  return { lane, checkOnly, version };
 }
 
 if (import.meta.main) {
   try {
-    const manifest = JSON.parse(
-      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-    );
-    const dshManifest = JSON.parse(
-      readFileSync(new URL("../dsh/bundle.json", import.meta.url), "utf8"),
-    );
-    const options = parseCli(process.argv.slice(2));
-    const version = releaseVersionForLane({
-      lane: options.lane,
-      piVersion: manifest.version,
-      dshVersion: dshManifest.dsh_release?.version,
-    });
-    const verified = releaseLatest({ version, ...options });
+    const options = parseLatestCli(process.argv.slice(2));
+    const verified = releaseLatest({ ...options, version: options.version ?? readReleaseVersion(options.lane) });
     const verb = options.checkOnly ? "Verified" : "Set and verified";
     for (const result of verified) {
       console.log(`${verb} ${result.packageName}@latest -> ${result.version}`);

@@ -5,6 +5,9 @@ Sparkles has two stable, host-specific npm identities built from
 `@pi-sparkles/pi-sparkles` for Pi and `@dsh-sparkles/dsh-sparkles` for
 DeepSeek Harness. They reuse functional cores but retain independent host
 entrypoints, presentation, locks, verification, and release maturity.
+Each package increments its own version sequence. Releasing Pi must not
+automatically bump, publish, or retag DSH, and vice versa. A shared core fix may
+require both packages to release together, each with its own next version.
 
 ## Pi release — @pi-sparkles/pi-sparkles
 
@@ -88,48 +91,134 @@ They are not npm dependencies or package assets. T6 accepts only explicitly
 selected, bounded capability packets and receipts and provides no order-mutation
 surface or silent provider fallback.
 
-## Version and publish procedure
+## Version selection and publication (both channels)
 
-An npm name/version is immutable. Before preparing another release:
+**Never assume the next version of either package.** Pi and DSH have independent
+published histories, manifests, candidate builds, and release decisions:
 
-1. update the root `package.json` version using Semantic Versioning;
-2. update `CHANGELOG.md`;
-3. commit, create the matching `v<version>` tag, and rebuild from that tag;
-4. run `bun run npm:release:verify`; and
-5. publish the exact content-locked tarball, never the repository root; and
-6. explicitly move that package's `latest` dist-tag to the published version
-   and verify the tag from the registry.
+| Channel | npm package | Version source | CI tag |
+| --- | --- | --- | --- |
+| Pi | `@pi-sparkles/pi-sparkles` | root `package.json` | `pi-v<version>` |
+| DSH | `@dsh-sparkles/dsh-sparkles` | `dsh/bundle.json` → `dsh_release.version` | `dsh-v<version>` |
 
-The first registry publication must be performed by an authenticated maintainer
-because a trusted-publisher relationship cannot be attached until the package
-exists. The explicit command is:
+The required DSH host version is compatibility metadata, not a Sparkles release
+version. Neither the other channel's version nor an unqualified repository tag
+is evidence for the selected package's next release. Building, packing, local
+installation, and manual checks do not consume a version.
 
-```sh
-npm publish ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.11.tgz --tag latest --access public
-bun run npm:release:latest -- pi
-```
+1. Inspect the selected package **before editing its version**:
 
-Publishing changes external state and is never performed by builds, tests, or
-packaging commands. After the first publication, configure the npm package's
-trusted publisher for `.github/workflows/npm-publish.yml`, then prefer that
-manual, tag-bound OIDC workflow over a long-lived automation token. The
-workflow always publishes both packages with `--tag latest` and finishes with a
-registry assertion for both tags; it has no alternate dist-tag input. Configure
-a protected GitHub `npm` environment if review approval is required.
+   ```sh
+   bun run npm:release:preflight -- pi
+   # Or, for a DSH release:
+   bun run npm:release:preflight -- dsh
+   ```
 
-After publication, verify the registry artifact and install through Pi:
+   This read-only command queries that exact npm identity's `versions` and
+   `dist-tags`. It reports the highest published stable baseline, current local
+   candidate, whether that candidate is published, and the next patch for review.
+   It never selects a version, edits files, or publishes. A stale `latest` tag
+   does not erase versions already published. Registry errors fail closed.
 
-```sh
-npm view @pi-sparkles/pi-sparkles@0.1.11 \
-  name version dist.integrity repository --json
-npm view @pi-sparkles/pi-sparkles dist-tags.latest
-pi install npm:@pi-sparkles/pi-sparkles@0.1.11
-```
+2. State the package, published baseline, local candidate/publication status,
+   exact chosen version, and reason in the release update. Validate a user-given
+   version; otherwise select the smallest appropriate SemVer increment from
+   this package's history. Reuse an unpublished candidate when it is the intended
+   next version. Do not bump it again after manual testing. Record a specific
+   reason for a skipped patch or a minor/major change; no automatic cross-channel
+   alignment is allowed.
+3. Update only that channel's version source and changelog. Set `release_lane`,
+   `release_base`, and `release_version` to the reviewed values, then validate:
 
-`npm:release:latest` is an authenticated, registry-mutating command. It first
-proves that the exact root-package version exists, runs `npm dist-tag add`, and
-then requires `@latest` to resolve to that version. `--check` performs only the
-final read-only assertions.
+   ```sh
+   bun run npm:release:preflight -- "$release_lane" --base "$release_base" --version "$release_version"
+   ```
+
+   A non-patch decision also requires `--reason "<reviewed reason>"`. The guard
+   rejects a stale/wrong baseline, an already published version, a backward
+   version, an unexplained skip, or a source-version mismatch. This procedure
+   covers stable package releases; prerelease/initial publication needs its own
+   explicit reviewed procedure.
+4. Run `bun run npm:release:procedure:test`, then the selected lane's
+   `npm:release:verify` or `dsh:npm:release:verify` gate. Complete requested local
+   installation and manual checks on that candidate. If checks lead to fixes,
+   rebuild/reverify under the same unused version. Retain the final exact tarball
+   and checksums. These commands never publish.
+5. For CI, commit the reviewed source and create the selected lane's immutable
+   tag, `pi-v<version>` or `dsh-v<version>`. Dispatch
+   `.github/workflows/npm-publish.yml` with explicit `lane`, `base`, `version`,
+   optional non-patch `reason`, and publication confirmation. The workflow
+   validates tag/source/registry agreement, runs only that lane's release gate,
+   and revalidates the locked tarball before publishing **one package**.
+6. For an explicitly authorized local publication, set `release_directory` to
+   `dist/npm/t6` (Pi) or `dist/dsh/npm/t6` (DSH), and repeat preflight immediately
+   before publishing, preserving its output:
+
+   ```sh
+   bun run npm:release:preflight -- "$release_lane" --base "$release_base" --version "$release_version" --artifact "$release_directory" > "release-preflight-${release_lane}.json"
+   ```
+
+   Include the same `--reason` for a non-patch choice. This verifies the tarball's
+   lock/checksums, maturity, package name, and exact selected version. Publish
+   only the `tarball` path in that evidence with
+   `npm publish <verified-tarball> --tag latest --access public --ignore-scripts`.
+   Do not publish the repository root or bypass the preflight with an ad hoc
+   guessed version. Packaging and verification never publish; registry mutation
+   requires explicit authorization.
+7. Verify that exact registry artifact's integrity against the tarball, and run:
+
+   ```sh
+   bun run npm:release:latest -- "$release_lane" --version "$release_version" --check
+   ```
+
+   Update the website only from each channel's confirmed publication and exact
+   required host metadata. If both packages are requested, repeat the procedure
+   independently; equal versions are neither required nor assumed.
+
+`npm:release:latest` has no default or `all` mode. Read-only `pi --check` or
+`dsh --check` may use that lane's source version. Authenticated tag mutation
+requires an explicit lane **and** `--version`; it verifies the exact publication,
+changes only that package's tag, then verifies `latest`. Do not mutate the other
+channel while repairing one lane.
+
+Configure each npm identity's trusted publisher for the manual workflow after
+its authenticated first publication. A protected GitHub `npm` environment may
+supply the repository's approval policy.
+
+### Coordinated releases for a shared core fix
+
+A fix in a core Gleam package can affect both hosts and require both npm
+packages to release in the same batch. Review the impact and check both host
+legs. When both releases are in scope:
+
+1. Inspect both npm histories and record two explicit baseline/version choices.
+   Each advances from its own published version; a shared fix does not imply
+   matching package versions.
+2. Update each channel's version source and changelog. Build two tarballs and
+   complete both independent release/install gates and requested manual checks
+   before publishing either package.
+3. The same reviewed source commit may carry `pi-v<pi-version>` and
+   `dsh-v<dsh-version>`. Dispatch the workflow separately for each tag with that
+   channel's own baseline/version, or publish each verified tarball through its
+   own authorized local procedure. Keep separate preflight evidence files.
+4. Verify each exact registry artifact and `latest` tag independently. Record
+   both outcomes and update the website from those actual publications.
+
+This is one coordinated delivery batch containing two independent npm releases.
+Publication is not atomic: if one succeeds and the other fails, retain the
+successful publication, report the remaining failure, and resume only the
+unfinished channel after a fresh registry check. Do not bump the successful
+package again, align version numbers, or claim both completed.
+
+### Numbering incident: 2026-09-07
+
+Published DSH was `0.1.10`; `0.1.11` was only a local manual-check candidate.
+The receipt-fix release should have reused **DSH Sparkles `0.1.11`**. Publishing
+`0.1.12` was a mistake, not a required bump after local testing or a consequence
+of Pi's `0.1.11` release. Keep published DSH `0.1.12` and its tag unchanged.
+Do not backfill the gap, relabel it, or synchronize Pi to conceal it. Inspect
+fresh registry history for every subsequent release; this incident does not
+preselect a future version.
 
 ---
 
@@ -154,9 +243,9 @@ browser entrypoint for `shell.overlay`. All 135 ledger components are covered:
 per DSH agent. DSH-only Cordis entries remain in the isolated `dsh/plugins/`
 lane. The exact excluded/scoped/extra lists are recorded in `dsh-lock.json` and
 the manifest's `dshSparkles` section. It declares the exact
-`@deepseek-ai/dsh@0.1.1-rc.2` host peer and pins the tested agent, tool, command,
-system-prompt, session-projection, client-runtime, and UI-layout service peers
-to `0.1.1-rc.2`. It also pins `pdfjs-dist` and the shared
+`@deepseek-ai/dsh@0.1.2-rc.1` host peer and pins the tested agent, tool, command,
+system-prompt, session-projection, client-ui-session, and UI-layout service peers
+to `0.1.2-rc.1`. It also pins `pdfjs-dist` and the shared
 `@napi-rs/canvas@1.0.3` runtime without initializing either during entrypoint
 registration, requires Node 22.19+, and carries the
 `dsh.bundle.patch` manifest and a content lock (`dsh-lock.json` +
@@ -175,38 +264,16 @@ Packaging and verification never publish.
 bun run dsh:npm:release:verify
 ```
 
-That gate builds the exact 0.1.10 tarball, installs it without synthesizing a
-standalone DSH host, composes it in an isolated profile using the installed
-tested `0.1.1-rc.2` runtime, runs `npm publish --dry-run`, and confirms that the
-version is unused. The reviewed artifact is:
+That gate builds the version explicitly recorded in `dsh/bundle.json`, installs
+it in a clean prefix/profile through the tested DSH `0.1.2-rc.1` CLI, verifies
+receipt consumption/isolation/resume and authenticated web client assets, runs
+`npm publish --dry-run`, and checks version availability. DSH 0.1.1 is unsupported.
+The current published release is `0.1.12`; its historical tarball is:
 
 ```text
-dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.10.tgz
+dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.12.tgz
 ```
 
-After explicit publication authorization, publish that exact tarball and then
-verify it through DSH:
-
-```sh
-npm publish ./dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.10.tgz --tag latest --access public
-bun run npm:release:latest -- dsh
-npm view @dsh-sparkles/dsh-sparkles@0.1.10 \
-  name version dist.integrity repository --json
-npm view @dsh-sparkles/dsh-sparkles dist-tags.latest
-dsh plugin --profile <name> add @dsh-sparkles/dsh-sparkles@0.1.10
-```
-
-The Pi `0.1.11` and DSH `0.1.10` maintenance releases remain independent. Move
-each package's `latest` tag only after its own exact tarball has been explicitly
-published:
-
-```sh
-bun run npm:release:latest -- pi
-bun run npm:release:latest -- dsh
-```
-
-The `all` mode first requires the Pi and DSH manifests to declare the same
-version, then preflights both exact package versions before changing either
-tag, updates the tags separately, and verifies both registry values. It is
-never called by build, package, or verification gates because those commands
-must not mutate the registry.
+It is already published and must not be published again. The independent Pi
+release remains `0.1.11`. These are current records, not instructions for choosing
+or bumping a future release. Follow the common procedure above for every release.
