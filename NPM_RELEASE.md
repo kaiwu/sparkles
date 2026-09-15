@@ -268,12 +268,12 @@ That gate builds the version explicitly recorded in `dsh/bundle.json`, installs
 it in a clean prefix/profile through the tested DSH `0.1.5-rc.1` CLI, verifies
 receipt consumption/isolation/resume and authenticated web client assets, runs
 `npm publish --dry-run`, and checks version availability. DSH 0.1.2 is unsupported.
-The current published release is `0.1.12`; its historical tarball is:
+The current published release is `0.1.13`; its tarball is:
 
 ```text
-dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.12.tgz
+dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.13.tgz
 ```
 
-It is already published and must not be published again. The independent Pi
-release remains `0.1.11`. These are current records, not instructions for choosing
-or bumping a future release. Follow the common procedure above for every release.
+Do not publish that version again. The independent Pi release remains `0.1.11`.
+These are current records, not instructions for choosing or bumping a future
+release. Follow the common procedure above for every release.
