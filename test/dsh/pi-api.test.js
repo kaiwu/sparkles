@@ -378,7 +378,7 @@ describe("pi-api facade", () => {
     delete agent.session.snapshotEvents;
     agent.session.events = [];
     await expect(ctx.__tools[0].execute({}, toolRunContext(agent)))
-      .rejects.toThrow("requires DSH 0.1.2-rc.1 session.snapshotEvents()");
+      .rejects.toThrow("requires DSH 0.1.5-rc.1 session.snapshotEvents()");
   });
 
   test("session-bound OHLCV receipts feed short indicator calls without crossing DSH agents", async () => {

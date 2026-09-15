@@ -19,7 +19,7 @@ describe("npm release latest tags", () => {
   test.each(["pi", "dsh"])("CI %s selection installs and verifies only its own host/package", (lane) => {
     const workflow = Bun.YAML.parse(readFileSync(new URL("../../.github/workflows/npm-publish.yml", import.meta.url), "utf8"));
     for (const [name, expected] of [
-      ["Install the selected package's tested host", lane === "pi" ? "npm install --global @earendil-works/pi-coding-agent@0.84.1" : "npm install --global @deepseek-ai/dsh@0.1.2-rc.1"],
+      ["Install the selected package's tested host", lane === "pi" ? "npm install --global @earendil-works/pi-coding-agent@0.84.1" : "npm install --global @deepseek-ai/dsh@0.1.5-rc.1"],
       ["Build and verify the selected T6 release", lane === "pi" ? "bun run npm:release:verify" : "bun run dsh:npm:release:verify"],
     ]) {
       const step = workflow.jobs.publish.steps.find((step) => step.name === name);

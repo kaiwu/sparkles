@@ -149,7 +149,7 @@ export async function verifyAgainstDshTools({
       { default: CommandRuntime },
       { default: SessionStore, Session, SessionId },
       { default: SessionProjectionRegistry },
-      { default: AgentRegistry, Inbox, agentEvents },
+      { default: AgentRegistry, agentEvents, assembleContextFor },
       { createScope },
       { default: plugin },
     ] =
@@ -194,18 +194,26 @@ export async function verifyAgainstDshTools({
         id,
         options: {},
         session,
-        inbox: new Inbox(session, {
-          inserted() {},
-          discarded() {},
-          claimed() {},
-        }),
+        // dsh-agent 0.1.5 removed the public Inbox class; the loop owns
+        // inbox storage. This smoke agent never drives a turn.
+        inbox: {
+          nextTurn: [],
+          nextStep: [],
+          clear() {},
+          append() {},
+          prepend() {},
+          replace() {
+            return false;
+          },
+          remove() {
+            return false;
+          },
+        },
         status: "idle",
         ctx: scope.ctx,
         send() {},
         followup() {},
-        steer() {
-          return { outcome: Promise.resolve({ status: "rejected" }) };
-        },
+        steer() {},
         inject() {},
         cancel() {},
         runMaintenance: (task) => task(new AbortController().signal),
@@ -238,10 +246,7 @@ export async function verifyAgainstDshTools({
     for (const name of ["finance-track", "cn-track", "swing", "watch"]) {
       if (!commandNames.has(name)) failures.push(`scoped counterpart command is missing: ${name}`);
     }
-    const prompt = await ctx.systemPrompt.assemble({
-      agent: first.agent,
-      scope: first.agent,
-    });
+    const prompt = await ctx.systemPrompt.assemble(assembleContextFor(first.agent));
     const expectedTushareGuidance = process.env.TUSHARE_TOKEN?.trim()
       ? "The heavily limited Tushare stock-listing identity fallback is configured in this DSH process; never use it first or automatically, and call it only after the primary path is unavailable and the user explicitly requests or accepts the fallback."
       : "The optional Tushare stock-listing identity adapter is unavailable in this DSH process because TUSHARE_TOKEN is not configured; do not call it or guess the missing identity.";

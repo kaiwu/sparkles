@@ -9,9 +9,26 @@ host effects are adapted. Pi users install the sibling
 [`@pi-sparkles/pi-sparkles`](https://www.npmjs.com/package/@pi-sparkles/pi-sparkles)
 package instead.
 
-Requires **DSH 0.1.2-rc.1** (the 0.1.2 prerelease API), with exact host and
-service peers. DSH 0.1.1 is unsupported. Session receipts use the host's
-`snapshotEvents()` API, including after session resume.
+Requires **DSH 0.1.5-rc.1** (the 0.1.5 prerelease API), with exact host and
+service peers. DSH 0.1.2 is unsupported. Session receipts use the host's
+`snapshotEvents()` API, including after session resume. Custom Sparkles
+session events remain in the live persisted-event catalog because DSH 0.1.5
+`Session.append()` cannot mark third-party events `ignorable`.
+
+DSH 0.1.5 still cannot migrate **v0** logs that already contain
+`pi-sparkles/status` or `pi-sparkles/custom` events: the v0-to-v1 edge uses a
+frozen first-party inventory and refuses unknown historical types even when
+ignorable. Rewrite those logs before opening them:
+
+```sh
+bun run dsh:migrate:v0-sparkles -- --dry-run
+bun run dsh:migrate:v0-sparkles -- --apply
+```
+
+The rewrite keeps event sequence numbers and replaces Sparkles rows with
+`feedback/record` placeholders. Conversation history can load; overlay status
+and old session receipts in those v0 logs are not restored. Originals are
+copied beside the log as `*.pre-dsh-0.1.5`.
 
 - `scripts/dsh-bundle.js` builds the bundle (`bun run dsh:bundle`).
 - `scripts/dsh-npm-package.js` builds the separate npm release.
@@ -110,7 +127,7 @@ dsh --profile <name> --dump-config
 `bun test test/dsh test/workflow/dsh_npm_package.test.js` covers the adapter,
 parallel invocation isolation, per-agent state ownership, lifecycle/session
 mapping, overlay component/projection, inline chart metadata/card, release gate, locks,
-and npm inventory. `bun run dsh:verify` currently uses DSH 0.1.2-rc.1
+and npm inventory. `bun run dsh:verify` currently uses DSH 0.1.5-rc.1
 implementation to create two real agent scopes, expose all 246 effective tools,
 verify the shared prompt and track projection, and prove that a watchlist
 mutation cannot leak to the second agent. It also verifies CN/HK/US receipt
@@ -123,7 +140,7 @@ boots that profile through the installed DSH CLI, checks authenticated page
 and client asset loading, then runs the receipt/runtime checks under Node
 against that installed package. Asset checks are structural, not visual QA.
 
-The generated package declares the exact `@deepseek-ai/dsh@0.1.2-rc.1` host
+The generated package declares the exact `@deepseek-ai/dsh@0.1.5-rc.1` host
 peer, pins its tested DSH service peers to the same version, and pins
 `pdfjs-dist` plus its Bun-compatible `@napi-rs/canvas` polyfill. PDF runtime
 state is initialized only by a PDF operation, never while the DSH entrypoint

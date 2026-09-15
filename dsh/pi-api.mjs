@@ -69,7 +69,7 @@ function currentAgent(storage, operation) {
 
 function sessionEvents(session) {
   if (typeof session?.snapshotEvents !== "function") {
-    throw new Error("dsh-sparkles requires DSH 0.1.2-rc.1 session.snapshotEvents()");
+    throw new Error("dsh-sparkles requires DSH 0.1.5-rc.1 session.snapshotEvents()");
   }
   return session.snapshotEvents();
 }

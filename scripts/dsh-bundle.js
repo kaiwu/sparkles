@@ -493,7 +493,7 @@ mutate a paper or live order.
 
 ## Install
 
-Requires **DSH ${DSH_RUNTIME_PEERS["@deepseek-ai/dsh"]}**, the DSH 0.1.2 API.
+Requires **DSH ${DSH_RUNTIME_PEERS["@deepseek-ai/dsh"]}**, the DSH 0.1.5 API.
 The host and service peers are pinned exactly; DSH 0.1.1 is unsupported.
 
 \`\`\`sh
@@ -523,9 +523,10 @@ AAPL" or "compare SMA/RSI/ATR for 600519.SH".
   the badge or move it with arrow keys when it covers content; double-click or
   press Home to reset it.
 - The package contributes its required \`pi-sparkles/custom\` and
-  \`pi-sparkles/status\` types to DSH rc.7's process-wide persisted-event
+  \`pi-sparkles/status\` types to DSH 0.1.5's process-wide persisted-event
   catalog before cold session loading, so scoped state and the overlay survive
-  a host restart.
+  a host restart. DSH 0.1.5 has no plugin event-registration API and
+  \`Session.append()\` cannot mark events \`ignorable\`.
 - Tools register through \`ctx.tools\` and are validated against the DSH
   schema subset; the embedded Pi decoders still enforce the full argument
   contract (lengths, ranges, enums) at call time.

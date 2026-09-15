@@ -5,6 +5,21 @@ follow Semantic Versioning. The exact tier, plugin inventory, maturity, and
 content hashes remain authoritative in each tarball's `dsh-lock.json` and
 `release-lock.json`.
 
+## 0.1.13 - 2026-09-10
+
+- Require DSH 0.1.5-rc.1 explicitly for the host and all tested service peers.
+  DSH 0.1.2-rc.1 is unsupported.
+- Keep contributing `pi-sparkles/custom` and `pi-sparkles/status` to the live
+  session-event catalog. DSH 0.1.5 session format v3 treats unknown events as
+  required unless they are `ignorable`, but `Session.append()` still cannot
+  stamp that marker, and v0 historical migration refuses unknown types even
+  when ignorable.
+- Verify against the installed 0.1.5 agent registry, which no longer exports
+  the public `Inbox` class and requires `agent.id` to equal `session.id`.
+- Add `bun run dsh:migrate:v0-sparkles` to rewrite DSH 0.1.2 v0 session logs
+  whose `pi-sparkles/status` and `pi-sparkles/custom` events block 0.1.5
+  historical migration. The rewrite is seq-preserving and leaves a backup.
+
 ## 0.1.12 - 2026-09-07
 
 - Require DSH 0.1.2-rc.1 explicitly for the host and all tested service peers.

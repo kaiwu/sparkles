@@ -124,11 +124,14 @@ function registerSessionEventTypes(knownSessionEventTypes) {
   ) {
     throw new Error("DSH session event vocabulary is unavailable");
   }
-  // DSH exports the process-wide vocabulary as a ReadonlySet but has no
-  // registration service for npm plugins. The bundle pins the tested host version
-  // and contributes its two required event types before any cold session can
-  // load. Vocabulary knowledge is process-lifetime state, like DSH's compiled
-  // catalog, so it deliberately outlives plugin fibers and HMR disposal.
+  // DSH 0.1.5 treats unknown persisted events as required unless they carry
+  // `ignorable: true`, and it rejected a public event-name registration API.
+  // `Session.append()` still cannot stamp that marker, and v0 historical
+  // migration refuses unknown types even when ignorable. The bundle therefore
+  // still contributes its two required types to the live catalog Set before any
+  // cold session can load. Vocabulary knowledge is process-lifetime state, like
+  // DSH's compiled catalog, so it deliberately outlives plugin fibers and HMR
+  // disposal.
   knownSessionEventTypes.add(DSH_CUSTOM_EVENT);
   knownSessionEventTypes.add(DSH_STATUS_EVENT);
 }

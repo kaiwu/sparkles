@@ -243,9 +243,9 @@ browser entrypoint for `shell.overlay`. All 135 ledger components are covered:
 per DSH agent. DSH-only Cordis entries remain in the isolated `dsh/plugins/`
 lane. The exact excluded/scoped/extra lists are recorded in `dsh-lock.json` and
 the manifest's `dshSparkles` section. It declares the exact
-`@deepseek-ai/dsh@0.1.2-rc.1` host peer and pins the tested agent, tool, command,
+`@deepseek-ai/dsh@0.1.5-rc.1` host peer and pins the tested agent, tool, command,
 system-prompt, session-projection, client-ui-session, and UI-layout service peers
-to `0.1.2-rc.1`. It also pins `pdfjs-dist` and the shared
+to `0.1.5-rc.1`. It also pins `pdfjs-dist` and the shared
 `@napi-rs/canvas@1.0.3` runtime without initializing either during entrypoint
 registration, requires Node 22.19+, and carries the
 `dsh.bundle.patch` manifest and a content lock (`dsh-lock.json` +
@@ -265,9 +265,9 @@ bun run dsh:npm:release:verify
 ```
 
 That gate builds the version explicitly recorded in `dsh/bundle.json`, installs
-it in a clean prefix/profile through the tested DSH `0.1.2-rc.1` CLI, verifies
+it in a clean prefix/profile through the tested DSH `0.1.5-rc.1` CLI, verifies
 receipt consumption/isolation/resume and authenticated web client assets, runs
-`npm publish --dry-run`, and checks version availability. DSH 0.1.1 is unsupported.
+`npm publish --dry-run`, and checks version availability. DSH 0.1.2 is unsupported.
 The current published release is `0.1.12`; its historical tarball is:
 
 ```text

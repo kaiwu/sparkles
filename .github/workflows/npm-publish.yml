@@ -79,7 +79,7 @@ jobs:
         run: |
           case "$RELEASE_LANE" in
             pi) npm install --global @earendil-works/pi-coding-agent@0.84.1 ;;
-            dsh) npm install --global @deepseek-ai/dsh@0.1.2-rc.1 ;;
+            dsh) npm install --global @deepseek-ai/dsh@0.1.5-rc.1 ;;
             *) exit 1 ;;
           esac
 
