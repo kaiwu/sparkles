@@ -4,19 +4,28 @@
 // compiled Pi plugin bundle and calls createPlugin with the ordered
 // `[shortName, extensionFactory]` list. The resulting Cordis plugin mounts a
 // Pi ExtensionApi facade (pi-api.mjs) over the Harness `ctx` and runs every
-// extension factory once. Pi session lifecycle hooks follow DSH agent/session
-// events; they are never synthesized at process/plugin scope. Registration
+// extension factory once. Pi session lifecycle hooks follow DSH serial
+// `agent/created` (with `source`) and `agent/disposed`; they are never
+// synthesized at process/plugin scope. Registration
 // collisions are detected per plugin with the same named-registration guard
 // the Pi aggregate uses.
 
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   createPiApi,
   DSH_CUSTOM_EVENT,
   DSH_STATUS_EVENT,
 } from "./pi-api.mjs";
+import { DSH_HOST_VERSION } from "./runtime-contract.mjs";
+
+const SESSION_START_SOURCES = new Set(["startup", "resume", "clear", "compact"]);
+
+function sessionStartReason(source) {
+  return SESSION_START_SOURCES.has(source) ? source : "startup";
+}
 
 const NAMED_REGISTRATIONS = new Map([
   ["registerTool", (args) => args[0]?.name],
@@ -94,27 +103,62 @@ function dshHome() {
   return resolve(configured);
 }
 
-async function loadSessionEventTypes() {
+function dshCliPackageRoot() {
+  const names = process.platform === "win32" ? ["dsh.cmd", "dsh"] : ["dsh"];
+  for (const dir of (process.env.PATH ?? "").split(delimiter)) {
+    if (!dir) continue;
+    for (const name of names) {
+      const bin = join(dir, name);
+      if (!existsSync(bin)) continue;
+      try {
+        const root = dirname(dirname(realpathSync(bin)));
+        const manifestPath = join(root, "package.json");
+        if (!existsSync(manifestPath)) continue;
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+        if (manifest.name === "@deepseek-ai/dsh") return root;
+      } catch {
+        // Keep scanning PATH for a later authentic dsh binary.
+      }
+    }
+  }
+  return null;
+}
+
+function hostSessionEntryCandidates() {
+  const sessionEntry = (...root) =>
+    join(...root, "@deepseek-ai", "dsh-session", "lib", "index.js");
+  const candidates = [
+    sessionEntry(dshHome(), "profiles", "node_modules"),
+  ];
+  const cliRoot = dshCliPackageRoot();
+  if (cliRoot) {
+    candidates.push(sessionEntry(cliRoot, "node_modules"));
+  }
+  return candidates;
+}
+
+export async function loadSessionEventTypes() {
   try {
     const hostSession = await import("@deepseek-ai/dsh-session");
     return hostSession.KNOWN_SESSION_EVENT_TYPES;
   } catch (error) {
     if (error?.code !== "ERR_MODULE_NOT_FOUND") throw error;
   }
-  // A development link resolves imports from its source checkout rather than
-  // from the profile. DSH maintains this flat fallback specifically so profile
-  // plugins can resolve host packages regardless of their own install layout.
-  const fallback = join(
-    dshHome(),
-    "profiles",
-    "node_modules",
-    "@deepseek-ai",
-    "dsh-session",
-    "lib",
-    "index.js",
+  // DSH 0.1.7 installs a process-local ESM interceptor at profile load and
+  // no longer writes `.dsh-module-fallback` copies into
+  // `$DSH_HOME/profiles/node_modules`. Bare import still works inside the
+  // CLI. Vanilla Node (install-smoke, dsh:verify) resolves the same catalog
+  // from the installed CLI package.
+  const tried = [];
+  for (const fallback of hostSessionEntryCandidates()) {
+    tried.push(fallback);
+    if (!existsSync(fallback)) continue;
+    const hostSession = await import(pathToFileURL(fallback).href);
+    return hostSession.KNOWN_SESSION_EVENT_TYPES;
+  }
+  throw new Error(
+    `dsh-sparkles requires DSH ${DSH_HOST_VERSION} @deepseek-ai/dsh-session; looked at ${tried.join(", ")}`,
   );
-  const hostSession = await import(pathToFileURL(fallback).href);
-  return hostSession.KNOWN_SESSION_EVENT_TYPES;
 }
 
 function registerSessionEventTypes(knownSessionEventTypes) {
@@ -124,14 +168,14 @@ function registerSessionEventTypes(knownSessionEventTypes) {
   ) {
     throw new Error("DSH session event vocabulary is unavailable");
   }
-  // DSH 0.1.5 treats unknown persisted events as required unless they carry
-  // `ignorable: true`, and it rejected a public event-name registration API.
-  // `Session.append()` still cannot stamp that marker, and v0 historical
-  // migration refuses unknown types even when ignorable. The bundle therefore
-  // still contributes its two required types to the live catalog Set before any
-  // cold session can load. Vocabulary knowledge is process-lifetime state, like
-  // DSH's compiled catalog, so it deliberately outlives plugin fibers and HMR
-  // disposal.
+  // DSH 0.1.7 session format v4 still treats unknown persisted events as
+  // required unless they carry `ignorable: true`, and it still rejected a
+  // public event-name registration API. `Session.append()` still cannot stamp
+  // that marker, and v0 historical migration refuses unknown types even when
+  // ignorable. The bundle therefore still contributes its two required types
+  // to the live catalog Set before any cold session can load. Vocabulary
+  // knowledge is process-lifetime state, like DSH's compiled catalog, so it
+  // deliberately outlives plugin fibers and HMR disposal.
   knownSessionEventTypes.add(DSH_CUSTOM_EVENT);
   knownSessionEventTypes.add(DSH_STATUS_EVENT);
 }
@@ -202,7 +246,11 @@ export function createPlugin(
         await ctx.plugin(extension, extensionConfig);
       }
       const scopedApis = new Map();
-      ctx.on("agent/created", ({ agent }) => {
+      // DSH 0.1.7 removed `agent/session-start`. Serial `agent/created` now
+      // carries `source` (`startup` | `resume` | `clear` | `compact`) and is
+      // the publication/startup boundary: compose scoped shells first so a
+      // failed registration can veto, then restore from the live session log.
+      ctx.on("agent/created", async ({ agent, source }) => {
         if (!agent?.ctx) {
           throw new Error("DSH agent has no scoped Cordis context");
         }
@@ -264,9 +312,7 @@ export function createPlugin(
             { cause: error },
           );
         }
-      });
-      ctx.on("agent/session-start", async ({ agent, source }) => {
-        const reason = source === "resume" ? "resume" : "startup";
+        const reason = sessionStartReason(source);
         await api._fireSessionStart(agent, reason);
         await scopedApis.get(agent)?._fireSessionStart(agent, reason);
       });

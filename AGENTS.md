@@ -218,9 +218,10 @@ never return a placeholder success. Provider networking continues through
 or assume a Pi-provided fetch API exists in DSH; verify the shared interpreter
 under DSH's supported Node runtime.
 
-DSH agent creation is composition-only. Instantiate scoped shells on
-`agent/created`, restore them on the real `agent/session-start`, and release
-them on `agent/disposed`. DSH append-only forks/resumes are distinct sessions;
+DSH 0.1.7 announces agents on serial `agent/created` with `source`
+(`startup` | `resume` | `clear` | `compact`). Instantiate scoped shells on
+that event, restore them from the live session log using `source`, and
+release them on `agent/disposed`. DSH append-only forks/resumes are distinct sessions;
 do not synthesize Pi `session_tree` navigation. Custom entries, queued
 messages, cwd, cancellation, notifications, and tool execution must always use
 the invoking agent carried through async-local context. Persistence must be

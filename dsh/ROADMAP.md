@@ -24,7 +24,7 @@ inventory without entering the global Pi-shell lane:
 - DSH does not navigate a Pi-style branch tree inside one live session.
   Session-tree hooks are accepted but never synthetically fired; fresh and
   resumed agents restore from their own append-only session logs during the
-  real `agent/session-start` lifecycle.
+  real `agent/created` lifecycle (`source` distinguishes resume from startup).
 
 The bundle manifest records the separation explicitly:
 

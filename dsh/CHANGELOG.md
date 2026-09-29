@@ -5,6 +5,27 @@ follow Semantic Versioning. The exact tier, plugin inventory, maturity, and
 content hashes remain authoritative in each tarball's `dsh-lock.json` and
 `release-lock.json`.
 
+## 0.1.14 - 2026-09-29
+
+- Require DSH 0.1.7-rc.2 explicitly for the host and all tested service peers.
+  DSH 0.1.5-rc.1 is unsupported.
+- Restore Pi session_start hooks from serial `agent/created`, which now
+  carries `source` (`startup` | `resume` | `clear` | `compact`). Pass that
+  source through as the Pi session_start reason. DSH 0.1.7 removed the
+  separate `agent/session-start` emit.
+- Keep contributing `pi-sparkles/custom` and `pi-sparkles/status` to the live
+  session-event catalog. DSH 0.1.7 session format v4 still treats unknown
+  events as required unless they are `ignorable`, and `Session.append()` still
+  cannot stamp that marker.
+- Verify resume by entering an agent and announcing the real `source` rather
+  than `register()`, which always announces `startup`.
+- Resolve the live session-event catalog from the installed DSH CLI when
+  vanilla Node loads the package. DSH 0.1.7 no longer materializes
+  `.dsh-module-fallback` copies under `$DSH_HOME/profiles/node_modules`.
+- Read the finance-track overlay from the main-view session and
+  `projectionsBySession`. DSH 0.1.7 session list snapshots no longer expose
+  `state.current`.
+
 ## 0.1.13 - 2026-09-10
 
 - Require DSH 0.1.5-rc.1 explicitly for the host and all tested service peers.

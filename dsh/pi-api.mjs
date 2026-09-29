@@ -8,6 +8,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import { DSH_HOST_VERSION } from "./runtime-contract.mjs";
 import {
   OUTPUT_SCHEMA,
   renderToolValue,
@@ -69,7 +70,9 @@ function currentAgent(storage, operation) {
 
 function sessionEvents(session) {
   if (typeof session?.snapshotEvents !== "function") {
-    throw new Error("dsh-sparkles requires DSH 0.1.5-rc.1 session.snapshotEvents()");
+    throw new Error(
+      `dsh-sparkles requires DSH ${DSH_HOST_VERSION} session.snapshotEvents()`,
+    );
   }
   return session.snapshotEvents();
 }

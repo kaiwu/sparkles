@@ -8,7 +8,8 @@ import {
   DSH_STATUS_EVENT,
   financeChartPresentationMeta,
 } from "../../dsh/pi-api.mjs";
-import { createPlugin } from "../../dsh/plugin.mjs";
+import { createPlugin, loadSessionEventTypes } from "../../dsh/plugin.mjs";
+import { DSH_HOST_VERSION } from "../../dsh/runtime-contract.mjs";
 import { dshClientFactorySource } from "../../dsh/client.js";
 import {
   STATUS_PROJECTION_KEY,
@@ -378,7 +379,7 @@ describe("pi-api facade", () => {
     delete agent.session.snapshotEvents;
     agent.session.events = [];
     await expect(ctx.__tools[0].execute({}, toolRunContext(agent)))
-      .rejects.toThrow("requires DSH 0.1.5-rc.1 session.snapshotEvents()");
+      .rejects.toThrow("requires DSH 0.1.7-rc.2 session.snapshotEvents()");
   });
 
   test("session-bound OHLCV receipts feed short indicator calls without crossing DSH agents", async () => {
@@ -935,7 +936,7 @@ describe("pi-api facade", () => {
     const started = [];
     const knownSessionEventTypes = new Set(["turn/start"]);
     const extension = (api) => {
-      api.on("session_start", () => started.push("started"));
+      api.on("session_start", (event) => started.push(event.reason));
       api.registerTool({
         name: "only",
         description: "only tool",
@@ -958,11 +959,46 @@ describe("pi-api facade", () => {
     );
     expect(ctx.__tools).toHaveLength(1);
     expect(started).toEqual([]);
-    await ctx.__emit("agent/session-start", {
-      agent: fakeAgent(),
+    const agent = fakeAgent();
+    agent.ctx = fakeCtx();
+    await ctx.__emit("agent/created", {
+      agent,
       source: "startup",
     });
-    expect(started).toEqual(["started"]);
+    expect(started).toEqual(["startup"]);
+  });
+
+  test("loadSessionEventTypes resolves the installed DSH 0.1.7 catalog", async () => {
+    const types = await loadSessionEventTypes();
+    expect(types).toBeInstanceOf(Set);
+    expect(types.has("turn/start")).toBe(true);
+    expect(DSH_HOST_VERSION).toBe("0.1.7-rc.2");
+  });
+
+  test("createPlugin restores from each DSH 0.1.7 agent/created source", async () => {
+    const ctx = fakeCtx();
+    const started = [];
+    const plugin = createPlugin(
+      [["lifecycle", (api) => {
+        api.on("session_start", (event) => started.push(event.reason));
+        return Promise.resolve(undefined);
+      }]],
+      [],
+      "dsh-sparkles",
+      [],
+      new Set(),
+    );
+    await plugin.apply(ctx, {});
+    for (const source of ["startup", "resume", "clear", "compact"]) {
+      const agent = fakeAgent(source);
+      agent.ctx = fakeCtx();
+      await ctx.__emit("agent/created", { agent, source });
+    }
+    expect(started).toEqual(["startup", "resume", "clear", "compact"]);
+    const unknown = fakeAgent("unknown");
+    unknown.ctx = fakeCtx();
+    await ctx.__emit("agent/created", { agent: unknown, source: "future" });
+    expect(started.at(-1)).toBe("startup");
   });
 
   test("scoped Pi counterparts get isolated registrations, state, lifecycle, and prompt", async () => {
@@ -1002,8 +1038,8 @@ describe("pi-api facade", () => {
     first.ctx = fakeCtx({ guardInjectedServices: true });
     const second = fakeAgent("second");
     second.ctx = fakeCtx({ guardInjectedServices: true });
-    await root.__emit("agent/created", { agent: first });
-    await root.__emit("agent/created", { agent: second });
+    await root.__emit("agent/created", { agent: first, source: "startup" });
+    await root.__emit("agent/created", { agent: second, source: "resume" });
     expect(root.__tools).toHaveLength(0);
     expect(first.ctx.__tools.map((tool) => tool.name)).toEqual(["scoped_counter"]);
     expect(second.ctx.__tools.map((tool) => tool.name)).toEqual(["scoped_counter"]);
@@ -1018,9 +1054,6 @@ describe("pi-api facade", () => {
     expect(first.ctx.__promptSections[0].text).toContain(
       "never invoke a shell merely to discover today's date",
     );
-
-    await root.__emit("agent/session-start", { agent: first, source: "startup" });
-    await root.__emit("agent/session-start", { agent: second, source: "resume" });
     expect(starts).toEqual(["session-first", "session-second"]);
     expect(first.session.snapshotEvents().at(-1).data.text).toBe("count:1");
     expect(second.session.snapshotEvents().at(-1).data.text).toBe("count:1");
@@ -1110,12 +1143,29 @@ describe("pi-api facade", () => {
       name: "tool.call.toolview",
       key: "chart_ohlcv",
     });
-    const rendered = overlay.component({
+    const hidden = overlay.component({
       useSessions: (selector) => selector({
         current: "s1",
         byId: {
           s1: {
+            id: "s1",
+            retainedBy: {},
             projectionValues: {
+              piSparklesStatus: { values: { "finance-track": "US · USD" } },
+            },
+          },
+        },
+      }),
+    });
+    expect(hidden).toBeNull();
+    const rendered = overlay.component({
+      useSessions: (selector) => selector({
+        byId: {
+          s1: { id: "s1", retainedBy: { mainView: 1 } },
+        },
+        projectionsBySession: {
+          s1: {
+            values: {
               piSparklesStatus: { values: { "finance-track": "US · USD" } },
             },
           },

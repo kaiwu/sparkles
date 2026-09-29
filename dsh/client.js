@@ -25,15 +25,32 @@ function clampedPosition(node, left, top, bounds) {
     top: clamp(top, OVERLAY_PADDING, bounds.height - rect.height - OVERLAY_PADDING)
   };
 }
+function currentSessionId(state) {
+  var sessions = Object.values(state && state.byId ? state.byId : {});
+  for (var i = 0; i < sessions.length; i += 1) {
+    var session = sessions[i];
+    if (session && session.retainedBy && (session.retainedBy.mainView || 0) > 0) {
+      return session.id;
+    }
+  }
+  return undefined;
+}
+function trackStatusText(state) {
+  var current = currentSessionId(state);
+  if (current === undefined) return undefined;
+  var snapshot = state.projectionsBySession && state.projectionsBySession[current];
+  var view = snapshot && snapshot.values && snapshot.values.piSparklesStatus;
+  if (view && view.values && typeof view.values[TRACK_STATUS_KEY] === "string") {
+    return view.values[TRACK_STATUS_KEY];
+  }
+  var summary = state.byId[current];
+  var legacy = summary && summary.projectionValues && summary.projectionValues.piSparklesStatus;
+  return legacy && legacy.values && typeof legacy.values[TRACK_STATUS_KEY] === "string"
+    ? legacy.values[TRACK_STATUS_KEY]
+    : undefined;
+}
 function FinanceTrackOverlay(props) {
-  var text = props.useSessions(function (state) {
-    var current = state.current;
-    if (current === undefined) return undefined;
-    var summary = state.byId[current];
-    return summary && summary.projectionValues && summary.projectionValues.piSparklesStatus
-      ? summary.projectionValues.piSparklesStatus.values[TRACK_STATUS_KEY]
-      : undefined;
-  });
+  var text = props.useSessions(trackStatusText);
   var positionState = React.useState(null);
   var position = positionState[0];
   var setPosition = positionState[1];

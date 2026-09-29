@@ -149,7 +149,7 @@ export async function verifyAgainstDshTools({
       { default: CommandRuntime },
       { default: SessionStore, Session, SessionId },
       { default: SessionProjectionRegistry },
-      { default: AgentRegistry, agentEvents, assembleContextFor },
+      { default: AgentRegistry, assembleContextFor },
       { createScope },
       { default: plugin },
     ] =
@@ -184,7 +184,7 @@ export async function verifyAgainstDshTools({
       throw new Error("real DSH runtime did not initialize the agent scope factory");
     }
 
-    const createAgent = (rawId, retainedSession, source = "startup") => {
+    const createAgent = async (rawId, retainedSession, source = "startup") => {
       const id = SessionId(rawId);
       const session = retainedSession ??
         ctx.sessions.create(id, { meta: { cwd: process.cwd() } });
@@ -219,13 +219,15 @@ export async function verifyAgainstDshTools({
         runMaintenance: (task) => task(new AbortController().signal),
         whenIdle: () => Promise.resolve(),
       });
-      const unregister = ctx.agents.register(agent);
-      agentEvents(ctx, agent).emit("agent/session-start", { source });
+      // DSH 0.1.7 `register()` always announces `source: "startup"`. Resume
+      // restoration needs the real `source` on serial `agent/created`.
+      const unregister = ctx.agents.enter(agent, undefined);
+      await ctx.agents.announce(agent, source);
       return { agent, scope, unregister };
     };
 
-    const first = createAgent("dsh-sparkles-verify-1");
-    const second = createAgent("dsh-sparkles-verify-2");
+    const first = await createAgent("dsh-sparkles-verify-1");
+    const second = await createAgent("dsh-sparkles-verify-2");
     await new Promise((resolve) => setTimeout(resolve, 0));
     const schemas = ctx.tools.schemas(first.agent);
     toolCount = schemas.length;
@@ -464,7 +466,7 @@ export async function verifyAgainstDshTools({
     );
     first.unregister();
     await first.scope.dispose();
-    const resumed = createAgent(
+    const resumed = await createAgent(
       "dsh-sparkles-verify-1",
       retainedFirstSession,
       "resume",

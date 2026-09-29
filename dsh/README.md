@@ -9,13 +9,13 @@ host effects are adapted. Pi users install the sibling
 [`@pi-sparkles/pi-sparkles`](https://www.npmjs.com/package/@pi-sparkles/pi-sparkles)
 package instead.
 
-Requires **DSH 0.1.5-rc.1** (the 0.1.5 prerelease API), with exact host and
-service peers. DSH 0.1.2 is unsupported. Session receipts use the host's
+Requires **DSH 0.1.7-rc.2** (the 0.1.7 prerelease API), with exact host and
+service peers. DSH 0.1.5 is unsupported. Session receipts use the host's
 `snapshotEvents()` API, including after session resume. Custom Sparkles
-session events remain in the live persisted-event catalog because DSH 0.1.5
+session events remain in the live persisted-event catalog because DSH 0.1.7
 `Session.append()` cannot mark third-party events `ignorable`.
 
-DSH 0.1.5 still cannot migrate **v0** logs that already contain
+DSH 0.1.7 still cannot migrate **v0** logs that already contain
 `pi-sparkles/status` or `pi-sparkles/custom` events: the v0-to-v1 edge uses a
 frozen first-party inventory and refuses unknown historical types even when
 ignorable. Rewrite those logs before opening them:
@@ -91,9 +91,9 @@ or Pi package metadata.
 | commands | Registered with `ctx.commands`; Pi UI notifications become command result text. |
 | queued user messages | Routed to the invoking agent's `followup` or `steer` inbox. |
 | custom entries/session reads | Stored in and projected from the invoking DSH agent's session log. |
-| session lifecycle | Pi start/shutdown hooks follow `agent/session-start` and `agent/disposed`. |
+| session lifecycle | Pi start/shutdown hooks follow serial `agent/created` (with `source`) and `agent/disposed`. |
 | stateful Pi shells | Instantiated once in each `agent.ctx`; registrations and mutable cells disappear with that scope. |
-| Pi session-tree hooks | Registered for compatibility but not synthetically fired; DSH forks/resumes as a distinct session and restores on real session-start. |
+| Pi session-tree hooks | Registered for compatibility but not synthetically fired; DSH forks/resumes as a distinct session and restores on `agent/created`. |
 | Pi statusline | `setStatus`/`clearStatus` append whole-value DSH status events; `finance_track_overlay` folds them into `piSparklesStatus`. |
 | browser status | The package's `dsh.client` entry registers the draggable, keyboard-movable `pi-sparkles-finance-track` badge in `shell.overlay`; double-click or Home resets its position. |
 | browser charts | `chart_ohlcv` adds bounded `output.presentationMeta`; the package client registers a keyed `tool.call.toolview` card that renders responsive SVG inline in the transcript. |
@@ -127,7 +127,7 @@ dsh --profile <name> --dump-config
 `bun test test/dsh test/workflow/dsh_npm_package.test.js` covers the adapter,
 parallel invocation isolation, per-agent state ownership, lifecycle/session
 mapping, overlay component/projection, inline chart metadata/card, release gate, locks,
-and npm inventory. `bun run dsh:verify` currently uses DSH 0.1.5-rc.1
+and npm inventory. `bun run dsh:verify` currently uses DSH 0.1.7-rc.2
 implementation to create two real agent scopes, expose all 246 effective tools,
 verify the shared prompt and track projection, and prove that a watchlist
 mutation cannot leak to the second agent. It also verifies CN/HK/US receipt
@@ -140,7 +140,7 @@ boots that profile through the installed DSH CLI, checks authenticated page
 and client asset loading, then runs the receipt/runtime checks under Node
 against that installed package. Asset checks are structural, not visual QA.
 
-The generated package declares the exact `@deepseek-ai/dsh@0.1.5-rc.1` host
+The generated package declares the exact `@deepseek-ai/dsh@0.1.7-rc.2` host
 peer, pins its tested DSH service peers to the same version, and pins
 `pdfjs-dist` plus its Bun-compatible `@napi-rs/canvas` polyfill. PDF runtime
 state is initialized only by a PDF operation, never while the DSH entrypoint
