@@ -379,7 +379,7 @@ describe("pi-api facade", () => {
     delete agent.session.snapshotEvents;
     agent.session.events = [];
     await expect(ctx.__tools[0].execute({}, toolRunContext(agent)))
-      .rejects.toThrow("requires DSH 0.1.7-rc.2 session.snapshotEvents()");
+      .rejects.toThrow("requires DSH 0.2.0-rc.2 session.snapshotEvents()");
   });
 
   test("session-bound OHLCV receipts feed short indicator calls without crossing DSH agents", async () => {
@@ -968,14 +968,14 @@ describe("pi-api facade", () => {
     expect(started).toEqual(["startup"]);
   });
 
-  test("loadSessionEventTypes resolves the installed DSH 0.1.7 catalog", async () => {
+  test("loadSessionEventTypes resolves the installed DSH 0.2.0-rc.2 catalog", async () => {
     const types = await loadSessionEventTypes();
     expect(types).toBeInstanceOf(Set);
     expect(types.has("turn/start")).toBe(true);
-    expect(DSH_HOST_VERSION).toBe("0.1.7-rc.2");
+    expect(DSH_HOST_VERSION).toBe("0.2.0-rc.2");
   });
 
-  test("createPlugin restores from each DSH 0.1.7 agent/created source", async () => {
+  test("createPlugin restores from each DSH 0.2.0-rc.2 agent/created source", async () => {
     const ctx = fakeCtx();
     const started = [];
     const plugin = createPlugin(

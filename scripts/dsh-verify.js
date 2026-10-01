@@ -219,7 +219,7 @@ export async function verifyAgainstDshTools({
         runMaintenance: (task) => task(new AbortController().signal),
         whenIdle: () => Promise.resolve(),
       });
-      // DSH 0.1.7 `register()` always announces `source: "startup"`. Resume
+      // DSH 0.2.0-rc.2 `register()` always announces `source: "startup"`. Resume
       // restoration needs the real `source` on serial `agent/created`.
       const unregister = ctx.agents.enter(agent, undefined);
       await ctx.agents.announce(agent, source);

@@ -1,5 +1,6 @@
-// Exact DSH 0.1.7 host and service API used by this release.
-export const DSH_HOST_VERSION = "0.1.7-rc.2";
+// Exact installed DSH 0.2.0 prerelease host and service API used by this release.
+// There is no stable 0.2.0 pin. Published 0.1.14 remains on 0.1.7-rc.2.
+export const DSH_HOST_VERSION = "0.2.0-rc.2";
 export const DSH_RUNTIME_PEERS = {
   "@deepseek-ai/dsh": DSH_HOST_VERSION,
   "@deepseek-ai/dsh-agent": DSH_HOST_VERSION,

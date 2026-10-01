@@ -5,6 +5,17 @@ follow Semantic Versioning. The exact tier, plugin inventory, maturity, and
 content hashes remain authoritative in each tarball's `dsh-lock.json` and
 `release-lock.json`.
 
+## 0.1.15 - 2026-10-01
+
+- Require installed DSH 0.2.0-rc.2 explicitly for the host and all tested
+  service peers. Published 0.1.14 stays on DSH 0.1.7-rc.2. There is no stable
+  DSH 0.2.0 pin, and this candidate is not published by the compatibility fix.
+- Keep the 0.1.14 session, catalog, projection, and overlay behavior. DSH
+  0.2.0-rc.2 still announces agents on serial `agent/created` with `source`,
+  still uses session format v4, still cannot stamp `ignorable` from
+  `Session.append()`, and still serves the finance-track overlay through
+  `retainedBy.mainView` and `projectionsBySession`.
+
 ## 0.1.14 - 2026-09-29
 
 - Require DSH 0.1.7-rc.2 explicitly for the host and all tested service peers.

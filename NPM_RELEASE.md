@@ -243,9 +243,9 @@ browser entrypoint for `shell.overlay`. All 135 ledger components are covered:
 per DSH agent. DSH-only Cordis entries remain in the isolated `dsh/plugins/`
 lane. The exact excluded/scoped/extra lists are recorded in `dsh-lock.json` and
 the manifest's `dshSparkles` section. It declares the exact
-`@deepseek-ai/dsh@0.1.7-rc.2` host peer and pins the tested agent, tool, command,
+`@deepseek-ai/dsh@0.2.0-rc.2` host peer and pins the tested agent, tool, command,
 system-prompt, session-projection, client-ui-session, and UI-layout service peers
-to `0.1.7-rc.2`. It also pins `pdfjs-dist` and the shared
+to `0.2.0-rc.2`. It also pins `pdfjs-dist` and the shared
 `@napi-rs/canvas@1.0.3` runtime without initializing either during entrypoint
 registration, requires Node 22.19+, and carries the
 `dsh.bundle.patch` manifest and a content lock (`dsh-lock.json` +
@@ -265,15 +265,18 @@ bun run dsh:npm:release:verify
 ```
 
 That gate builds the version explicitly recorded in `dsh/bundle.json`, installs
-it in a clean prefix/profile through the tested DSH `0.1.7-rc.2` CLI, verifies
+it in a clean prefix/profile through the tested DSH `0.2.0-rc.2` CLI, verifies
 receipt consumption/isolation/resume and authenticated web client assets, runs
-`npm publish --dry-run`, and checks version availability. DSH 0.1.2 is unsupported.
-The current published release is `0.1.14`; its tarball is:
+`npm publish --dry-run`, and checks version availability. DSH 0.1.7-rc.2 and
+earlier hosts are unsupported by this release.
+The current published release is `0.1.15`; it requires installed DSH
+`0.2.0-rc.2` and is the `latest` dist-tag. Its tarball is:
 
 ```text
-dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.14.tgz
+dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.15.tgz
 ```
 
-Do not publish that version again. The independent Pi release remains `0.1.11`.
+Do not publish that version again. Published `0.1.14` remains the package that
+requires DSH 0.1.7-rc.2. The independent Pi release remains `0.1.11`.
 These are current records, not instructions for choosing or bumping a future
 release. Follow the common procedure above for every release.

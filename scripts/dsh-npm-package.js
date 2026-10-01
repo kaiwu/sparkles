@@ -181,8 +181,8 @@ This is the DSH distribution of
 package, which reuses the same finance cores but owns separate Pi lifecycle and
 terminal presentation.
 
-Requires **DSH ${DSH_PEERS["@deepseek-ai/dsh"]}**, the DSH 0.1.7 API.
-The host and service peers are pinned exactly; DSH 0.1.5 is unsupported.
+Requires **DSH ${DSH_PEERS["@deepseek-ai/dsh"]}**, the installed DSH 0.2.0-rc.2 API.
+The host and service peers are pinned exactly; DSH 0.1.7-rc.2 and earlier hosts are unsupported.
 
 Ask about a stock or ETF in everyday language. DSH Sparkles brings current market
 data, price history, company filings, fundamentals, and financial calculations

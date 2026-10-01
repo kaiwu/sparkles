@@ -144,8 +144,8 @@ export async function loadSessionEventTypes() {
   } catch (error) {
     if (error?.code !== "ERR_MODULE_NOT_FOUND") throw error;
   }
-  // DSH 0.1.7 installs a process-local ESM interceptor at profile load and
-  // no longer writes `.dsh-module-fallback` copies into
+  // DSH 0.2.0-rc.2, like 0.1.7, installs a process-local ESM interceptor at
+  // profile load and does not write `.dsh-module-fallback` copies into
   // `$DSH_HOME/profiles/node_modules`. Bare import still works inside the
   // CLI. Vanilla Node (install-smoke, dsh:verify) resolves the same catalog
   // from the installed CLI package.
@@ -168,10 +168,10 @@ function registerSessionEventTypes(knownSessionEventTypes) {
   ) {
     throw new Error("DSH session event vocabulary is unavailable");
   }
-  // DSH 0.1.7 session format v4 still treats unknown persisted events as
-  // required unless they carry `ignorable: true`, and it still rejected a
-  // public event-name registration API. `Session.append()` still cannot stamp
-  // that marker, and v0 historical migration refuses unknown types even when
+  // DSH 0.2.0-rc.2 session format v4 still treats unknown persisted events as
+  // required unless they carry `ignorable: true`, and it still has no public
+  // event-name registration API. `Session.append()` still cannot stamp that
+  // marker, and v0 historical migration refuses unknown types even when
   // ignorable. The bundle therefore still contributes its two required types
   // to the live catalog Set before any cold session can load. Vocabulary
   // knowledge is process-lifetime state, like DSH's compiled catalog, so it
@@ -246,9 +246,10 @@ export function createPlugin(
         await ctx.plugin(extension, extensionConfig);
       }
       const scopedApis = new Map();
-      // DSH 0.1.7 removed `agent/session-start`. Serial `agent/created` now
-      // carries `source` (`startup` | `resume` | `clear` | `compact`) and is
-      // the publication/startup boundary: compose scoped shells first so a
+      // DSH 0.2.0-rc.2 keeps the 0.1.7 lifecycle: there is no
+      // `agent/session-start`. Serial `agent/created` carries `source`
+      // (`startup` | `resume` | `clear` | `compact`) and is the
+      // publication/startup boundary: compose scoped shells first so a
       // failed registration can veto, then restore from the live session log.
       ctx.on("agent/created", async ({ agent, source }) => {
         if (!agent?.ctx) {
