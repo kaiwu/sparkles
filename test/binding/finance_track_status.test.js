@@ -120,6 +120,17 @@ async function harness({
 }
 
 describe("finance track status binding", () => {
+  test("declares required on every object tool schema", async () => {
+    const instance = await harness();
+    for (const tool of instance.tools.values()) {
+      expect(tool.parameters.type).toBe("object");
+      expect(Array.isArray(tool.parameters.required)).toBe(true);
+    }
+    expect(instance.tools.get("finance_track_status").parameters.required).toEqual(
+      [],
+    );
+  });
+
   test("injects one pre-tool routing policy for advice, names, CNINFO, and indicators", async () => {
     const instance = await harness();
     const result = await instance.handlers.get("before_agent_start")(

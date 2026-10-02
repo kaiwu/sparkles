@@ -5,6 +5,16 @@ here. Versions follow Semantic Versioning. The exact selected tier, plugin
 inventory, maturity, and content hashes remain authoritative in each tarball's
 `release-lock.json` and `aggregate-lock.json`.
 
+## 0.1.12 - 2026-10-02
+
+- Always emit a `required` array on Pi tool object schemas, including `[]`
+  when every property is optional. Pi 1.0.0 still forwards parameter schemas
+  to OpenAI-compatible providers, and those providers reject a missing
+  `required` field.
+- The plain-Pi release check now installs `@earendil-works/pi-coding-agent`
+  1.0.0. The current T6 aggregate loads through that host's RPC `get_state`
+  path.
+
 ## 0.1.11 - 2026-09-03
 
 - Add an explicitly selected Sina daily-history alternative for mainland China,

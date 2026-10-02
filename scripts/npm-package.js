@@ -348,7 +348,7 @@ Sparkles for Pi is read-only research software: it cannot place, change, or canc
 broker orders. It is not investment, legal, accounting, or tax advice. See
 \`CONFIGURATION.md\` for the complete source and configuration reference.
 
-Version ${version} · Pi package \`${NPM_PACKAGE_NAME}\`
+Version ${version} · Pi package \`${NPM_PACKAGE_NAME}\` · tested with Pi 1.0.0
 `;
 }
 

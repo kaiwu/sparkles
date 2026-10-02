@@ -280,7 +280,8 @@ describe("finance charts bundled boundary", () => {
     };
     expect(Buffer.byteLength(JSON.stringify(request))).toBeLessThan(400);
 
-    const required = tools.get("chart_ohlcv").parameters.required ?? [];
+    const required = tools.get("chart_ohlcv").parameters.required;
+    expect(Array.isArray(required)).toBe(true);
     expect(required).not.toContain("trades");
     expect(required).not.toContain("gaps");
     expect(required).not.toContain("inputOmissions");

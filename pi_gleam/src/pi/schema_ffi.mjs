@@ -50,16 +50,19 @@ export function object(properties, additionalProperties) {
     shape[name] = schema;
     if (isRequired) required.push(name);
   }
+  // Pi 1.0 passes this schema through to OpenAI-compatible providers.
+  // Those providers reject an object schema that omits `required`, including
+  // the empty array used when every property is optional.
   return {
     type: "object",
     properties: shape,
-    ...(required.length > 0 ? { required } : {}),
+    required,
     additionalProperties,
   };
 }
 
 export function record(values) {
-  return { type: "object", additionalProperties: values };
+  return { type: "object", required: [], additionalProperties: values };
 }
 
 export function one_of(items) {
