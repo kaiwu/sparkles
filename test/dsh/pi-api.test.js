@@ -1069,6 +1069,30 @@ describe("pi-api facade", () => {
     expect(secondResult.details.count).toBe(1);
   });
 
+  test("the DSH watchlist sibling keeps agent isolation and resume without Pi Durable tools", async () => {
+    const { extension } = await import(resolve(import.meta.dir, "../../plugins/watchlist/build/dev/javascript/pi_sparkles_watchlist/pi_sparkles_watchlist.mjs"));
+    const root = fakeCtx();
+    const plugin = createPlugin([], [], "dsh-sparkles", [["watchlist", extension]], new Set());
+    await plugin.apply(root, {});
+    const first = fakeAgent("durable-first"), second = fakeAgent("durable-second");
+    first.ctx = fakeCtx(); second.ctx = fakeCtx();
+    await root.__emit("agent/created", { agent: first, source: "startup" });
+    await root.__emit("agent/created", { agent: second, source: "startup" });
+    const execute = (agent, name, input = {}) => agent.ctx.__tools.find((tool) => tool.name === name).execute(input, toolRunContext(agent, name));
+    expect(first.ctx.__tools.map((tool) => tool.name)).toEqual(["watchlist_add", "watchlist_remove", "watchlist_snapshot"]);
+    await execute(first, "watchlist_add", { watchlist: "core", track: "us", instrumentId: "figi:BBG000B9XRY4", symbol: "AAPL", mic: "XNAS", tags: [] });
+    expect((await execute(second, "watchlist_snapshot")).details.watchlists).toEqual([]);
+    const snapshot = (await execute(first, "watchlist_snapshot")).details;
+    expect(snapshot.snapshotSha256).toBe(createHash("sha256").update(snapshot.snapshotJson).digest("hex"));
+    await root.__emit("agent/disposed", { agent: first });
+    first.ctx = fakeCtx();
+    await root.__emit("agent/created", { agent: first, source: "resume" });
+    expect((await execute(first, "watchlist_snapshot")).details.watchlists[0].members[0].symbol).toBe("AAPL");
+    expect(first.ctx.__tools.some((tool) => /durable|review_schedule/.test(tool.name))).toBeFalse();
+    await root.__emit("agent/disposed", { agent: first });
+    await root.__emit("agent/disposed", { agent: second });
+  });
+
   test("status projection folds updates and the client registers shell.overlay", () => {
     const projection = statusProjection();
     expect(projection.key).toBe(STATUS_PROJECTION_KEY);

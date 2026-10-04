@@ -55,7 +55,10 @@ release verification load the T6 all-in-one aggregate entrypoint once so all
 The loader rejects earlier-tier and per-plugin target overrides.
 
 The T5 selection remains the historical 0.1.4 boundary. T6 is ProductUseful
-with zero omissions, partials, or blockers and is selected for version 0.1.11.
+with zero omissions, partials, or blockers. Published Pi 0.1.13 adds the opt-in
+Pi Durable watchlist and is tested with Pi 1.0.2. Registry integrity matches
+the verified local tarball and `latest` resolves to 0.1.13. This release advanced
+from Pi's independently verified published baseline 0.1.12.
 
 ## Local consumer verification
 
@@ -68,7 +71,7 @@ register the entrypoint through an offline, sessionless RPC request. Both
 startup processes have a 15-second hard limit. For a manual equivalent:
 
 ```sh
-npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.11.tgz
+npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.13.tgz
 printf '%s\n' '{"id":"startup","type":"get_state"}' | pi --no-extensions \
   --extension ./node_modules/@pi-sparkles/pi-sparkles/index.js \
   --mode rpc --no-session --offline
@@ -77,8 +80,13 @@ printf '%s\n' '{"id":"startup","type":"get_state"}' | pi --no-extensions \
 The package pins `pdfjs-dist` because the CN PDF path resolves its CMap assets
 at runtime, and pins `@napi-rs/canvas@1.0.3` because Pi runs on Bun and later
 floating native canvas builds can block extension import. Neither dependency is
-initialized until a PDF operation invokes the parser. Pi host code is not
-bundled and is declared with the Pi-required `"*"` peer ranges. The manifest
+initialized until a PDF operation invokes the parser. Pi's coding-agent and
+TUI remain host-owned and are declared with the Pi-required `"*"` peer ranges.
+The exact Pi Durable, Chord and Pi AI 1.0.2 SDK dependencies are bundled lazily
+for the Pi-only watchlist and initialize after conversational opt-in. Saving
+picks does not enable polling. The clean-install smoke uses an isolated home
+and agent directory so it cannot open a consumer's accepted watchlist store.
+The manifest
 still exposes exactly one small Pi entrypoint; it passes Pi's host-owned TUI
 helpers to the separately checksummed `runtime.js`, which is loaded with Bun's
 native module loader so Pi's Jiti compatibility loader never transpiles the
@@ -277,6 +285,7 @@ dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.15.tgz
 ```
 
 Do not publish that version again. Published `0.1.14` remains the package that
-requires DSH 0.1.7-rc.2. The independent Pi release remains `0.1.11`.
+requires DSH 0.1.7-rc.2. The independent Pi release is `0.1.13`, verified and
+published through its own release gate.
 These are current records, not instructions for choosing or bumping a future
 release. Follow the common procedure above for every release.

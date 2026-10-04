@@ -321,6 +321,9 @@ function entrySource(plan) {
         moduleSpecifier(ENTRY_DIR, compiledEntry),
       )};`;
     }
+    if (plugin.shortName === "watchlist") {
+      return `import { extension as scopedExtension${index} } from ${JSON.stringify(moduleSpecifier(ENTRY_DIR, compiledPluginEntry(plugin)))};`;
+    }
     return `import scopedExtension${index} from ${JSON.stringify(
       moduleSpecifier(ENTRY_DIR, join(DIST_DIR, plugin.shortName, "index.js")),
     )};`;
@@ -363,6 +366,9 @@ function pluginRecord(plan, plugin) {
     sourceArtifactSha256: sha256File(
       join(DIST_DIR, plugin.shortName, "index.js"),
     ),
+    ...(["watchlist", "finance_track_status"].includes(plugin.shortName) ? {
+      sourceCompiledEntrySha256: sha256File(compiledPluginEntry(plugin)),
+    } : {}),
     provider: typeof finance.provider === "string" ? finance.provider : null,
   };
 }
@@ -851,7 +857,8 @@ function lockScopedPiPluginsMatchPlan(records, plan) {
       record?.shortName === plugin.shortName &&
       record?.gleamPackage === plugin.name &&
       record?.version === plugin.version &&
-      isSha256(record?.sourceArtifactSha256)
+      isSha256(record?.sourceArtifactSha256) &&
+      (!["watchlist", "finance_track_status"].includes(plugin.shortName) || isSha256(record?.sourceCompiledEntrySha256))
     );
   });
 }
@@ -873,16 +880,8 @@ if (import.meta.main) {
           );
         }
       }
-      const trackStatus = plan.scopedPiPlugins.find(
-        (plugin) => plugin.shortName === "finance_track_status",
-      );
-      if (
-        trackStatus !== undefined &&
-        !existsSync(compiledPluginEntry(trackStatus))
-      ) {
-        throw new Error(
-          "Missing compiled finance_track_status shared-core module; rerun without --no-build",
-        );
+      for (const plugin of plan.scopedPiPlugins.filter((plugin) => ["finance_track_status", "watchlist"].includes(plugin.shortName))) {
+        if (!existsSync(compiledPluginEntry(plugin))) throw new Error(`Missing compiled ${plugin.shortName} shared-core module; rerun without --no-build`);
       }
     }
     await buildDshBundle(options.target, { build: options.build });

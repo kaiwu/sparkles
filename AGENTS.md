@@ -176,6 +176,14 @@ inspect the registry again, without preassigning another version here.
 
 ## Pi and DSH Host Lanes
 
+The local Pi source checkout is
+`/home/kaiwu/Documents/github/pi-mono`. Inspect it first for Pi host and
+Pi Durable contracts, including `packages/coding-agent/`, `packages/durable/`,
+and `packages/ai/`. `README.md` also records this checkout for the Pi acceptance
+fixture. Check its commit/tag and package versions before relying on behavior;
+the checkout may be newer than Sparkles' pinned or tested runtime. Keep this
+path as a development reference only, never a runtime or distribution dependency.
+
 Pi and DeepSeek Harness (DSH) are separate host and release lanes over the same
 product inventory. The tier ledger and ProductUseful status govern Pi only;
 `dsh/bundle.json` owns an independent DSH maturity gate. A passing Pi tier,

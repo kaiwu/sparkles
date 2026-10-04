@@ -1,4 +1,10 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { remember_tool } from "../durable_bridge_ffi.mjs";
+
+function registerTool(api, definition) {
+  api.registerTool(definition);
+  remember_tool(api, definition);
+}
 
 const COMPACT_CONTENT_MARGIN = 4;
 
@@ -39,7 +45,7 @@ export function register(
   executionMode,
   execute,
 ) {
-  api.registerTool({
+  registerTool(api, {
     name,
     label,
     description,
@@ -60,7 +66,7 @@ export function register_compact(
   executionMode,
   execute,
 ) {
-  api.registerTool({
+  registerTool(api, {
     name,
     label,
     description,
@@ -94,7 +100,7 @@ export function register_rendered(
   execute,
   renderer,
 ) {
-  api.registerTool({
+  registerTool(api, {
     name,
     label,
     description,

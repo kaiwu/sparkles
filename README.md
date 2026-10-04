@@ -45,8 +45,8 @@ provider fetch. A missing adapter is allowed and never triggers fallback.
 | Tiers | T1–T6 ProductUseful in independent Pi and DSH lanes · 0 open Pi blockers · [tiers.json](tiers.json) |
 | Inventory | 135 ledger plugins · 142 Gleam plugin packages · 77 finance libraries |
 | Tracks | closed `cn` / `hk` / `us` |
-| Pi release | `@pi-sparkles/pi-sparkles@0.1.12` · tested with Pi `1.0.0` |
-| Tested with | Pi `1.0.0` · DSH `0.1.1-rc.2` · Gleam `1.18.0` · Bun `1.3.14` |
+| Pi release | `@pi-sparkles/pi-sparkles@0.1.13` · tested with Pi `1.0.2` |
+| Tested with | Pi `1.0.2` · DSH `0.2.0-rc.2` · Gleam `1.18.0` · Bun `1.3.14` |
 
 The seven packages excluded from the aggregate (`hello`, `lifecycle`,
 `safety_gate`, `cn_setup`, `hk_setup`, `cn_fundamentals`, `hk_fundamentals`)
@@ -61,6 +61,26 @@ track status, swing workbench, portfolio, and watchlist. Its finance track
 status is rendered through DSH's browser `shell.overlay`; its OHLCV chart is a
 keyed inline tool-result card rather than a Pi terminal component. See
 [dsh/README.md](dsh/README.md).
+
+## Remember personal picks with Pi Durable
+
+When you use a watchlist, Sparkles gives the LLM an option to offer: “Shall I
+remember these picks across chats?” Accept in conversation; no command-line
+opt-in is needed. Storage and checks stay off until you accept. The default
+private store is `~/.pi-sparkles-watchlist`; accepted stores reopen with Pi.
+
+Saving picks is separate from scheduling. You can ask for one review or choose
+an interval and bounded count of recurring reviews. CN checks reuse the explicit
+Eastmoney A-share source and its runtime `AGENT_CONTACT` requirement. HK/US
+picks are saved, but their scheduled checks are labelled `track_partial`.
+Checks run while Pi is open. Inspect results through conversation; failures and
+interrupted calls are unknown, with no automatic refetch or external alerts.
+See [watchlist](plugins/watchlist/README.md) for controls and limits.
+
+Try: “My picks are CN 600519 and CN 600000.” If Pi offers to remember them,
+reply “Yes, remember these picks across chats.” In another chat, ask to show
+the saved watchlist or review it once using Eastmoney A-share quotes. Pi Durable
+1.0.2 is bundled lazily; DSH retains its per-agent session watchlist.
 
 ## Docs
 

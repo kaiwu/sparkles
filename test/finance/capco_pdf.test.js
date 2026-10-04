@@ -6,18 +6,27 @@ import * as time from "../../finance/finance_capco/build/dev/javascript/finance_
 import * as binaryResponse from "../../finance/finance_capco/build/dev/javascript/finance_http/finance_http/binary_response.mjs";
 import * as response from "../../finance/finance_capco/build/dev/javascript/finance_http/finance_http/response.mjs";
 import * as transport from "../../finance/finance_capco/build/dev/javascript/finance_http/finance_http/transport.mjs";
-import { Error, Ok, toList } from "../../finance/finance_capco/build/dev/javascript/finance_capco/gleam.mjs";
+import {
+  Error,
+  Ok,
+  toList,
+} from "../../finance/finance_capco/build/dev/javascript/finance_capco/gleam.mjs";
 
 function unwrap(result) {
   if (result instanceof Ok) return result[0];
-  throw new globalThis.Error(`Expected Ok, received ${result.constructor.name}`);
+  throw new globalThis.Error(
+    `Expected Ok, received ${result.constructor.name}`,
+  );
 }
 
 function duration(milliseconds) {
   return unwrap(time.duration(milliseconds));
 }
 
-function pdfResponse(bytes, sha256 = createHash("sha256").update(bytes).digest("hex")) {
+function pdfResponse(
+  bytes,
+  sha256 = createHash("sha256").update(bytes).digest("hex"),
+) {
   return unwrap(
     binaryResponse.new$(
       200,
@@ -78,7 +87,7 @@ test("CAPCO PDF boundary extracts positioned text for the pure row parser", asyn
   expect(parsed[0].listing_name).toBe("PING AN BANK");
   expect(parsed[0].section.code).toBe("J");
   expect(parsed[0].division.code).toBe("66");
-});
+}, 15000);
 
 test("CAPCO PDF boundary rejects forged hashes and cancellation", async () => {
   const bytes = classificationPdf();

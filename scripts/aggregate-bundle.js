@@ -1,3 +1,4 @@
+import { PI_DURABLE_EXTERNALS } from "./pi-durable-dependencies.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
@@ -490,6 +491,18 @@ silently fall back or share authority.
 Required-versus-optional behavior and entitlement limits remain controlled by
 the named plugin's contract.
 
+Personal watchlists offer conversational opt-in through \`watchlist_durable\`.
+Nothing creates the local store or polls a source before acceptance. The default
+private \`~/.pi-sparkles-watchlist\` reopens after acceptance; custom directories
+are explicit tool inputs. Saving picks does not schedule checks. Optional CN
+Eastmoney A-share reviews require runtime \`AGENT_CONTACT\`, explicit timing
+and a bounded count; HK/US review acquisition is \`track_partial\`. Jobs run
+while Pi owns the store. Inspect receipts with \`watchlist_review_status\`;
+interrupted reads remain unknown and are not automatically refetched. Disable
+through \`watchlist_durable\` to stop automatic reopening, retaining saved data.
+Pi Durable 1.0.2, Chord 1.0.2 and Pi AI 1.0.2 are pinned and lazily bundled
+inside the Pi watchlist artifact; no SDK package is resolved at runtime.
+
 | Plugin | Provider | Access | Referenced environment variables |
 | --- | --- | --- | --- |
 ${rows.join("\n")}
@@ -744,7 +757,8 @@ export async function assembleAggregateBundle(
         if (
           imported.external &&
           !imported.path.startsWith("node:") &&
-          imported.path !== "pdfjs-dist/legacy/build/pdf.mjs"
+          imported.path !== "pdfjs-dist/legacy/build/pdf.mjs" &&
+          !PI_DURABLE_EXTERNALS.includes(imported.path)
         ) {
           unsupportedRuntimeExternals.add(imported.path);
         }

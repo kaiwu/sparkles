@@ -1,3 +1,4 @@
+import { durableWatchlistPiSmoke } from "./test-durable-watchlist-pi.js";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { buildAggregateBundle } from "./aggregate-bundle.js";
@@ -47,3 +48,5 @@ run(
 console.log(
   `${target} all-in-one Pi load passed for ${summary.pluginCount} plugins through one entrypoint.`,
 );
+
+await durableWatchlistPiSmoke(summary.directory, piCommand, useSourceRuntime);

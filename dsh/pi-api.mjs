@@ -533,6 +533,8 @@ export function createPiApi({
     },
   };
 
+  // Each DSH API has its own catalog identity even when agents share the bus.
+  Object.defineProperty(api, Symbol.for("pi-sparkles:tool-bridge-owner"), { value: {} });
   return api;
 }
 

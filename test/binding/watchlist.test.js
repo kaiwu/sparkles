@@ -43,7 +43,8 @@ async function harness(entries = []) {
       tools.set(definition.name, definition);
     },
     on(name, handler) {
-      handlers.set(name, handler);
+      const previous = handlers.get(name);
+      handlers.set(name, previous ? async (...args) => { await previous(...args); return handler(...args); } : handler);
     },
     appendEntry(customType, data) {
       nextId += 1;

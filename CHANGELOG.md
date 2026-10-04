@@ -5,6 +5,21 @@ here. Versions follow Semantic Versioning. The exact selected tier, plugin
 inventory, maturity, and content hashes remain authoritative in each tarball's
 `release-lock.json` and `aggregate-lock.json`.
 
+## 0.1.13 - 2026-10-04
+
+- Let Pi offer to remember personal watchlist picks across chats through
+  conversation. Local storage stays off until the user accepts, and saving
+  picks does not start polling.
+- Use Pi Durable 1.0.2 for private local documents, bounded review tasks,
+  receipts, cancellation and restart recovery. Scheduled checks run while Pi
+  owns the store; interrupted source reads remain unknown without refetching.
+- Reuse the explicitly selected Eastmoney A-share quote tool for CN reviews.
+  CN/HK/US picks can be saved, while HK/US review acquisition remains
+  `track_partial`. Interpretation stays with the model and user.
+- Bundle the exact Durable SDK dependencies lazily and verify the cumulative
+  135-component package with Pi 1.0.2. Keep DSH's per-agent watchlist counterpart
+  on its existing session-log lifecycle.
+
 ## 0.1.12 - 2026-10-02
 
 - Always emit a `required` array on Pi tool object schemas, including `[]`

@@ -1,5 +1,7 @@
 import finance_core/identifier
 import finance_listing/listing
+import finance_provenance/hash
+import finance_provenance/identity
 import finance_track.{type Track}
 import gleam/dynamic/decode
 import gleam/json.{type Json}
@@ -237,7 +239,14 @@ pub fn replay(encoded_events: List(String)) -> Result(State, ReplayError) {
 }
 
 pub fn snapshot_json(state: State, selected_watchlists: List(Named)) -> Json {
-  json.object([
+  json.object(snapshot_fields(state, selected_watchlists))
+}
+
+fn snapshot_fields(
+  state: State,
+  selected_watchlists: List(Named),
+) -> List(#(String, Json)) {
+  [
     #("schemaVersion", json.int(schema_version)),
     #("revision", json.int(state.revision)),
     #("persistence", json.string("session_branch_versioned_event_log")),
@@ -249,7 +258,29 @@ pub fn snapshot_json(state: State, selected_watchlists: List(Named)) -> Json {
     #("maximumTotalMembers", json.int(maximum_total_members)),
     #("maximumRevision", json.int(maximum_revision)),
     #("watchlists", json.array(selected_watchlists, named_json)),
-  ])
+  ]
+}
+
+pub fn snapshot_handoff_json(
+  state: State,
+  selected_watchlists: List(Named),
+) -> Result(Json, String) {
+  let encoded = encode_snapshot(state, selected_watchlists)
+  use digest <- result.try(
+    hash.text(encoded) |> result.map_error(fn(_) { "snapshot_hash_failed" }),
+  )
+  Ok(
+    json.object(
+      list.append(snapshot_fields(state, selected_watchlists), [
+        #("snapshotJson", json.string(encoded)),
+        #("snapshotSha256", json.string(identity.sha256_value(digest))),
+        #(
+          "snapshotIntegrity",
+          json.string("content_bound_not_identity_authenticated"),
+        ),
+      ]),
+    ),
+  )
 }
 
 pub fn encode_snapshot(
@@ -257,6 +288,93 @@ pub fn encode_snapshot(
   selected_watchlists: List(Named),
 ) -> String {
   state |> snapshot_json(selected_watchlists) |> json.to_string
+}
+
+/// Admit a complete exported snapshot using the same identity and bounds laws
+/// as ordinary mutations. Duplicate names/keys are rejected, never merged.
+pub fn decode_snapshot(input: String) -> Result(State, String) {
+  use #(version, revision, values) <- result.try(
+    json.parse(input, snapshot_decoder())
+    |> result.map_error(fn(_) { "invalid_watchlist_snapshot" }),
+  )
+  case
+    version == schema_version && revision >= 0 && revision <= maximum_revision
+  {
+    False -> Error("invalid_watchlist_snapshot_version_or_revision")
+    True -> {
+      use state <- result.try(snapshot_named(values, empty()))
+      Ok(State(revision, state.watchlists))
+    }
+  }
+}
+
+fn snapshot_decoder() -> decode.Decoder(
+  #(Int, Int, List(#(String, List(MemberInput)))),
+) {
+  use version <- decode.field("schemaVersion", decode.int)
+  use revision <- decode.field("revision", decode.int)
+  use values <- decode.field("watchlists", decode.list(named_decoder()))
+  decode.success(#(version, revision, values))
+}
+
+fn named_decoder() -> decode.Decoder(#(String, List(MemberInput))) {
+  use name <- decode.field("name", decode.string)
+  use members <- decode.field("members", decode.list(member_input_decoder()))
+  decode.success(#(name, members))
+}
+
+fn snapshot_named(
+  values: List(#(String, List(MemberInput))),
+  state: State,
+) -> Result(State, String) {
+  case values {
+    [] -> Ok(state)
+    [#(name, members), ..rest] -> {
+      use _ <- result.try(
+        validate_watchlist_name(name)
+        |> result.map_error(fn(_) { "invalid_watchlist_name" }),
+      )
+      case find_watchlist(state.watchlists, name), members {
+        Some(_), _ -> Error("duplicate_watchlist_name")
+        _, [] -> Error("empty_watchlist_snapshot_member_list")
+        None, _ -> {
+          use next <- result.try(snapshot_members(members, name, state))
+          snapshot_named(rest, next)
+        }
+      }
+    }
+  }
+}
+
+fn snapshot_members(
+  values: List(MemberInput),
+  name: String,
+  state: State,
+) -> Result(State, String) {
+  case values {
+    [] -> Ok(state)
+    [member, ..rest] -> {
+      use built <- result.try(
+        build_member(member)
+        |> result.map_error(fn(_) { "invalid_watchlist_member" }),
+      )
+      case
+        find_watchlist(state.watchlists, name)
+        |> option.then(fn(named) {
+          find_member(named.members, member_key(built))
+        })
+      {
+        Some(_) -> Error("duplicate_watchlist_member")
+        None -> {
+          use #(next, _) <- result.try(
+            add(state, name, member)
+            |> result.map_error(fn(_) { "watchlist_snapshot_bounds_exceeded" }),
+          )
+          snapshot_members(rest, name, next)
+        }
+      }
+    }
+  }
 }
 
 pub fn render(state: State, selected_watchlists: List(Named)) -> String {

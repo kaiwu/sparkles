@@ -171,11 +171,12 @@ pub fn extension(api: pi.ExtensionApi) -> Promise(Nil) {
                 "Watchlist snapshot rejected: " <> string.inspect(error),
               )
             Ok(values) ->
-              tool.text_result(
-                watchlist.render(state, values),
-                watchlist.snapshot_json(state, values),
-              )
-              |> promise.resolve
+              case watchlist.snapshot_handoff_json(state, values) {
+                Error(message) -> tool.reject(message)
+                Ok(details) ->
+                  tool.text_result(watchlist.render(state, values), details)
+                  |> promise.resolve
+              }
           }
       }
     },

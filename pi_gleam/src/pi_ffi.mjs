@@ -1,3 +1,5 @@
+import { capture_entry } from "./durable_bridge_ffi.mjs";
+
 export function register_command(api, name, description, handler) {
   api.registerCommand(name, { description, handler });
 }
@@ -30,6 +32,7 @@ export function send_message(api, customType, content, display, triggerTurn, del
 }
 
 export function append_entry(api, customType, data) {
+  if (capture_entry(api, customType, data)) return;
   api.appendEntry(customType, data);
 }
 

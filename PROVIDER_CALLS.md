@@ -137,3 +137,12 @@ rights, ticker sequence, unsubscribe, or recovery conformance.
 | Web API OAuth | Blocked: interactive caller consent for exact `quote:read`. |
 | Direct ticker HTTP | Blocked: valid short-lived quote token from that OAuth lane. |
 | Direct ticker WebSocket | Blocked: valid short-lived quote token and explicit WebSocket confirmation. |
+
+
+The opt-in Pi Durable watchlist review (2026-10-04) reuses the existing
+`cn_stock_quote` Eastmoney `quote` operation above. It introduces no provider
+endpoint, entitlement, redistribution or live-response claim. Its deterministic
+role lane proves one explicitly scoped scripted CN request and receipt capture;
+HK/US scheduled acquisition remains `track_partial`. Runtime `AGENT_CONTACT`
+is still caller-owned. Interrupted reads become unknown without refetch or
+fallback; inspect `watchlist_review_status` for receipt and failure evidence.

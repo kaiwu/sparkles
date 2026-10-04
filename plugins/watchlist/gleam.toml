@@ -13,6 +13,8 @@ gleam_json = ">= 3.1.0 and < 4.0.0"
 finance_core = { path = "../../finance/finance_core" }
 finance_listing = { path = "../../finance/finance_listing" }
 finance_track = { path = "../../finance/finance_track" }
+finance_calendar = { path = "../../finance/finance_calendar" }
+finance_provenance = { path = "../../finance/finance_provenance" }
 pi_gleam = { path = "../../pi_gleam" }
 
 [dev-dependencies]
@@ -22,4 +24,4 @@ gleeunit = ">= 1.9.0 and < 2.0.0"
 runtime = "bun"
 
 [metadata.pi]
-tested_version = "0.83.0"
+tested_version = "1.0.2"

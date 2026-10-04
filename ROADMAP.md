@@ -1,5 +1,30 @@
 # Finance plugin roadmap
 
+## Active cumulative Pi maintenance — opt-in durable personal watchlists
+
+The 2026-10-04 batch keeps the complete T6 cumulative distribution as its
+delivery and verification unit. Existing T3 watchlist/monitor contracts remain
+the inventory owners; no new plugin or independent maturity milestone is added.
+A contextual LLM hint offers conversational opt-in; no command-line flag is
+required. After accepting, Pi users may select a private local store, save a content-bound
+watchlist, and request a bounded one-off or recurring review. Pi Durable owns
+task checkpoints, atomic receipts, and restart recovery. Finance validation,
+identity, date, and comparison laws stay in Gleam. Scheduled acquisition reuses
+the registered CN Eastmoney quote tool through the host's capability bridge;
+HK/US picks remain separately labelled `track_partial` for that acquisition.
+Source failures and interrupted attempts are terminal for that cycle, with no
+provider fallback or automatic re-fetch. Saved picks survive fresh Pi sessions.
+Scheduling runs only while Pi owns the store; reopening it resumes pending
+work, with missed intervals reported and no catch-up request burst.
+
+Acceptance must cover opt-in/default-off behavior, saved picks and revisions,
+receipt handoffs, completed-source reuse, interrupted-source recovery, bounded
+cycles, cancellation, isolated stores, competing writers, and the ordinary
+portfolio-manager journey. DSH keeps its existing scoped session watchlists;
+it has no equivalent durable scheduler and does not receive these Pi surfaces.
+Dependencies, locks/notices, clean installation, and the cumulative Pi load are
+part of this batch. Publishing and version selection are outside its scope.
+
 This roadmap sketches a family of small Gleam packages that can turn Pi into a
 finance research agent, initially focused on public equities. Each plugin is an
 independent Gleam project, can be distributed as source through Hex, and must be

@@ -8,6 +8,14 @@ import gleam/result
 /// The extension API object passed to a Pi extension factory.
 pub type ExtensionApi
 
+/// Explicit capability for the optional Pi Durable shell. This invokes an
+/// already registered tool and captures its custom entries in that task;
+/// it does not add a provider, fetch implementation, or financial policy.
+pub type DurableToolInvoker
+
+@external(javascript, "./durable_bridge_ffi.mjs", "create_invoker")
+pub fn durable_tool_invoker(api: ExtensionApi) -> DurableToolInvoker
+
 /// Context supplied to event and tool callbacks.
 pub type Context
 

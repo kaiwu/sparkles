@@ -1,3 +1,4 @@
+import { piDurableDependencies } from "./pi-durable-dependencies.js";
 import {
   mkdirSync,
   readFileSync,
@@ -14,6 +15,10 @@ export const HOST_EXTERNALS = [
   "@earendil-works/pi-ai",
   "@earendil-works/pi-ai/*",
   "@earendil-works/pi-tui",
+  "@earendil-works/pi-durable",
+  "@earendil-works/pi-durable/*",
+  "@earendil-works/chord/*",
+  "bun:sqlite",
   "pdfjs-dist",
   "pdfjs-dist/*",
   "typebox",
@@ -39,7 +44,7 @@ export async function buildPlugin(plugin) {
     "dev",
     "javascript",
     plugin.name,
-    `${plugin.name}.mjs`,
+    `${plugin.name}${plugin.shortName === "watchlist" ? "_pi" : ""}.mjs`,
   );
   const adapter = join(WORK_DIR, "adapters", `${plugin.shortName}.mjs`);
   mkdirSync(dirname(adapter), { recursive: true });
@@ -52,6 +57,9 @@ export async function buildPlugin(plugin) {
   rmSync(outputDirectory, { recursive: true, force: true });
   mkdirSync(outputDirectory, { recursive: true });
 
+  const external = plugin.shortName === "watchlist" ? HOST_EXTERNALS.filter((name) =>
+    !name.startsWith("@earendil-works/pi-durable") && !name.startsWith("@earendil-works/chord") &&
+    !name.startsWith("@earendil-works/pi-ai") && !name.startsWith("typebox")) : HOST_EXTERNALS;
   const result = await Bun.build({
     entrypoints: [adapter],
     outdir: outputDirectory,
@@ -61,7 +69,7 @@ export async function buildPlugin(plugin) {
     minify: false,
     sourcemap: "external",
     metafile: true,
-    external: HOST_EXTERNALS,
+    external,
   });
   if (!result.success) {
     for (const log of result.logs) console.error(log);
@@ -86,7 +94,8 @@ export async function buildPlugin(plugin) {
         plugin: plugin.name,
         version: plugin.version,
         pi: plugin.metadata.metadata?.pi ?? {},
-        external: HOST_EXTERNALS,
+        external,
+        ...(plugin.shortName === "watchlist" ? { bundledPiDurable: piDurableDependencies() } : {}),
       },
       null,
       2,

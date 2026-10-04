@@ -334,6 +334,29 @@ Your credentials stay in your runtime environment. Sparkles for Pi does not add 
 to the package or save them in Pi settings. For a project-local installation,
 add \`--local\` to \`pi install\`.
 
+## Remember personal picks with Pi Durable
+
+Sparkles can offer to remember watchlist picks across chats. Accept through
+conversation; no command-line opt-in is needed. Storage and polling are off
+until you accept. The default private \`~/.pi-sparkles-watchlist\` reopens in
+later Pi chats. Saving picks does not start polling.
+
+For example, tell Pi: "My picks are CN 600519 and CN 600000." Pi can offer
+to remember them; reply "Yes, remember these picks across chats" to opt in.
+Later, ask "Show my saved picks" or "Review my core watchlist once using
+Eastmoney A-share quotes." The model owns the conversation and interpretation.
+
+Ask for a one-off review, or explicitly choose an interval and bounded count.
+CN reviews reuse the selected Eastmoney A-share quote tool and runtime
+\`AGENT_CONTACT\`. HK/US picks are saved; their review acquisition is
+\`track_partial\`. Checks run while Pi is open. Interrupted reads remain
+unknown without automatic refetch. Ask to inspect receipts, cancel a review,
+or disable persistence through conversation. Saved data is retained on disable.
+
+Pi Durable 1.0.2 and its SDK dependencies are included and initialize only
+after opt-in. This feature is specific to the Pi package. DSH keeps its
+per-agent session watchlist and does not run these Durable tasks.
+
 ## External day-trader and broker dependencies
 
 Transaction-tape and broker-review tools require exact caller-supplied packets
@@ -348,7 +371,7 @@ Sparkles for Pi is read-only research software: it cannot place, change, or canc
 broker orders. It is not investment, legal, accounting, or tax advice. See
 \`CONFIGURATION.md\` for the complete source and configuration reference.
 
-Version ${version} · Pi package \`${NPM_PACKAGE_NAME}\` · tested with Pi 1.0.0
+Version ${version} · Pi package \`${NPM_PACKAGE_NAME}\` · tested with Pi 1.0.2
 `;
 }
 
@@ -989,7 +1012,12 @@ export function npmInstallSmoke(
         ],
         {
           cwd: installation,
-          env: withoutProviderCredentials(aggregateLock),
+          env: {
+            ...withoutProviderCredentials(aggregateLock),
+            HOME: installation,
+            PI_CODING_AGENT_DIR: join(installation, "agent"),
+            PI_CODING_AGENT_SESSION_DIR: join(installation, "sessions"),
+          },
           stdin: Buffer.from(
             '{"id":"pi-sparkles-startup","type":"get_state"}\n',
           ),

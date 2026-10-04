@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
 import { DIST_DIR } from "../../scripts/modules.js";
+import { scriptedProviderClock } from "../fixtures/scripted-provider-clock.js";
 
 const retrievedAtUnixMs = 1_786_092_300_000;
 
@@ -76,7 +77,7 @@ const universeSpec = {
 
 export async function loadBundledMarketReceipts() {
   const originalFetch = globalThis.fetch;
-  const originalNow = Date.now;
+  const restoreClock = scriptedProviderClock(retrievedAtUnixMs);
   const savedEnvironment = {
     AGENT_CONTACT: process.env.AGENT_CONTACT,
     ALPACA_API_KEY_ID: process.env.ALPACA_API_KEY_ID,
@@ -84,7 +85,6 @@ export async function loadBundledMarketReceipts() {
   };
   const requests = [];
   try {
-    Date.now = () => retrievedAtUnixMs;
     process.env.AGENT_CONTACT = "acceptance@example.test";
     process.env.ALPACA_API_KEY_ID = "acceptance-key-id";
     process.env.ALPACA_API_SECRET_KEY = "acceptance-secret-key";
@@ -149,7 +149,7 @@ export async function loadBundledMarketReceipts() {
     return copies;
   } finally {
     globalThis.fetch = originalFetch;
-    Date.now = originalNow;
+    restoreClock();
     restoreEnvironment(savedEnvironment);
   }
 }

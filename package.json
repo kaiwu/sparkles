@@ -1,6 +1,6 @@
 {
   "name": "pi-sparkles",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -60,6 +60,9 @@
     "npm:release:procedure:test": "bun test test/workflow/npm_release_latest.test.js test/workflow/npm_release_preflight.test.js"
   },
   "dependencies": {
+    "@earendil-works/chord": "1.0.2",
+    "@earendil-works/pi-ai": "1.0.2",
+    "@earendil-works/pi-durable": "1.0.2",
     "@napi-rs/canvas": "1.0.3",
     "pdfjs-dist": "6.2.108"
   },

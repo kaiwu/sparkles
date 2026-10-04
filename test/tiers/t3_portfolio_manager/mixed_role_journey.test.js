@@ -30,7 +30,8 @@ async function harness(name, entries = []) {
       tools.set(definition.name, definition);
     },
     on(event, handler) {
-      handlers.set(event, handler);
+      const previous = handlers.get(event);
+      handlers.set(event, previous ? async (...args) => { await previous(...args); return handler(...args); } : handler);
     },
     appendEntry(customType, data) {
       nextEntry += 1;
