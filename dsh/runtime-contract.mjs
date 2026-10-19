@@ -1,6 +1,7 @@
-// Exact installed DSH 0.2.0 prerelease host and service API used by this release.
-// There is no stable 0.2.0 pin. Published 0.1.14 remains on 0.1.7-rc.2.
-export const DSH_HOST_VERSION = "0.2.0-rc.2";
+// Exact installed/source DSH contract. This is host compatibility metadata,
+// independent of either Sparkles npm package's release version.
+export const DSH_HOST_VERSION = "0.2.1-rc.2";
+export const DSH_NODE_ENGINE = "^22.19.0 || >=24.0.0";
 export const DSH_RUNTIME_PEERS = {
   "@deepseek-ai/dsh": DSH_HOST_VERSION,
   "@deepseek-ai/dsh-agent": DSH_HOST_VERSION,
@@ -12,4 +13,8 @@ export const DSH_RUNTIME_PEERS = {
   "@deepseek-ai/dsh-session-projection": DSH_HOST_VERSION,
   "@deepseek-ai/dsh-system-prompt": DSH_HOST_VERSION,
   "@deepseek-ai/dsh-tools": DSH_HOST_VERSION,
+  "@deepseek-ai/dsh-storage-domain": DSH_HOST_VERSION,
+  "@deepseek-ai/dsh-api-session-controller": DSH_HOST_VERSION,
+  "@deepseek-ai/dsh-workspace": DSH_HOST_VERSION,
+  "@deepseek-ai/dsh-working-directory": DSH_HOST_VERSION,
 };

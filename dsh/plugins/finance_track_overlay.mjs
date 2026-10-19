@@ -4,7 +4,8 @@
 // to the browser client.
 
 import { z } from "zod";
-import { DSH_STATUS_EVENT } from "../pi-api.mjs";
+import { DSH_STATUS_EVENT, DSH_LEGACY_STATUS_EVENT } from "../pi-api.mjs";
+import { chartProjection } from "../chart-projection.mjs";
 
 export const STATUS_PROJECTION_KEY = "piSparklesStatus";
 
@@ -18,7 +19,8 @@ export function statusProjection() {
     init: () => ({}),
     apply(state, event) {
       if (
-        event?.type !== DSH_STATUS_EVENT ||
+        !(event?.type === DSH_LEGACY_STATUS_EVENT ||
+          (event?.type === DSH_STATUS_EVENT && event.ignorable === true)) ||
         typeof event.data?.key !== "string" ||
         (event.data.text !== null && typeof event.data.text !== "string")
       ) {
@@ -42,5 +44,6 @@ export default {
   inject: ["sessionProjections"],
   apply(ctx) {
     ctx.sessionProjections.register(statusProjection());
+    ctx.sessionProjections.register(chartProjection());
   },
 };

@@ -6,15 +6,25 @@ import {
   createPiApi,
   DSH_CUSTOM_EVENT,
   DSH_STATUS_EVENT,
+  DSH_LEGACY_CUSTOM_EVENT,
+  DSH_LEGACY_STATUS_EVENT,
   financeChartPresentationMeta,
 } from "../../dsh/pi-api.mjs";
-import { createPlugin, loadSessionEventTypes } from "../../dsh/plugin.mjs";
+import { createPlugin, loadSessionRuntime } from "../../dsh/plugin.mjs";
 import { DSH_HOST_VERSION } from "../../dsh/runtime-contract.mjs";
 import { dshClientFactorySource } from "../../dsh/client.js";
 import {
   STATUS_PROJECTION_KEY,
   statusProjection,
 } from "../../dsh/plugins/finance_track_overlay.mjs";
+
+function fakeAppendPluginRecord(session, type, data) {
+  return session.append(type, structuredClone(data), { ignorable: true }).seq;
+}
+
+function sessionRuntime(types = new Set()) {
+  return { KNOWN_SESSION_EVENT_TYPES: types, appendPluginRecord: fakeAppendPluginRecord };
+}
 
 function fakeCtx({ guardInjectedServices = false } = {}) {
   const tools = [];
@@ -33,6 +43,7 @@ function fakeCtx({ guardInjectedServices = false } = {}) {
       },
     },
     logger: { info() {}, warn() {} },
+    workingDirectory: { get: (session) => session.__cwd ?? session.header.cwd },
     systemPrompt: {
       section(value) {
         promptSections.push(value);
@@ -84,8 +95,8 @@ function fakeAgent(id = "agent-1") {
       id: `session-${id}`,
       header: { cwd: `/work/${id}` },
       snapshotEvents: () => Object.freeze([...events]),
-      append(type, data) {
-        const event = { type, data, seq: events.length, time: Date.now() };
+      append(type, data, options = {}) {
+        const event = { type, data, seq: events.length, time: Date.now(), ...options };
         events.push(event);
         return event;
       },
@@ -113,7 +124,7 @@ function toolRunContext(agent = fakeAgent(), callId = "call-1") {
 describe("pi-api facade", () => {
   test("registerTool bridges parameters and output through the DSH contract", async () => {
     const ctx = fakeCtx();
-    const api = createPiApi({ ctx });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
     let seen = null;
     api.registerTool({
       name: "stock_quote",
@@ -171,7 +182,7 @@ describe("pi-api facade", () => {
 
   test("tool rejection propagates as a thrown error", async () => {
     const ctx = fakeCtx();
-    const api = createPiApi({ ctx });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
     api.registerTool({
       name: "bad_tool",
       description: "fails",
@@ -187,7 +198,7 @@ describe("pi-api facade", () => {
 
   test("chart tool alone projects bounded DSH browser metadata", async () => {
     const ctx = fakeCtx();
-    const api = createPiApi({ ctx });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
     api.registerTool({
       name: "chart_ohlcv",
       description: "chart",
@@ -258,7 +269,7 @@ describe("pi-api facade", () => {
     );
 
     const ordinaryCtx = fakeCtx();
-    createPiApi({ ctx: ordinaryCtx }).registerTool({
+    createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx: ordinaryCtx }).registerTool({
       name: "ordinary",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       execute: async () => ({ content: [{ type: "text", text: "ok" }] }),
@@ -268,7 +279,7 @@ describe("pi-api facade", () => {
 
   test("registerCommand maps Pi handlers to the DSH CommandResult contract", async () => {
     const ctx = fakeCtx();
-    const api = createPiApi({ ctx });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
     api.registerCommand("finance-track", {
       description: "switch track",
       handler: async (_args, context) => {
@@ -291,7 +302,7 @@ describe("pi-api facade", () => {
 
   test("command handler errors become error results", async () => {
     const ctx = fakeCtx();
-    const api = createPiApi({ ctx });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
     api.registerCommand("boom", {
       description: "throws",
       handler: async () => {
@@ -308,11 +319,11 @@ describe("pi-api facade", () => {
 
   test("flags: registered default, config override, env override", () => {
     const ctx = fakeCtx();
-    const api = createPiApi({ ctx, config: { flags: { "finance-track": "hk" } } });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx, config: { flags: { "finance-track": "hk" } } });
     api.registerFlag("finance-track", { description: "track", type: "string", default: "us" });
     expect(api.getFlag("finance-track")).toBe("hk");
 
-    const api2 = createPiApi({ ctx });
+    const api2 = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
     api2.registerFlag("finance-track", { description: "track", type: "string", default: "us" });
     expect(api2.getFlag("finance-track")).toBe("us");
 
@@ -328,7 +339,7 @@ describe("pi-api facade", () => {
 
   test("appendEntry uses the invoking DSH session; getActiveTools lists tools", async () => {
     const ctx = fakeCtx();
-    const api = createPiApi({ ctx });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
     api.registerTool({
       name: "alpha",
       description: "first",
@@ -356,10 +367,10 @@ describe("pi-api facade", () => {
     expect(entries[0].customType).toBe("finance_cache.receipt");
     expect(entries[0].data).toEqual({ track: "cn" });
     expect(entries[0].type).toBe("custom");
-    expect(agent.session.snapshotEvents()[0].type).toBe("pi-sparkles/custom");
+    expect(agent.session.snapshotEvents()[0]).toMatchObject({ type: DSH_CUSTOM_EVENT, ignorable: true });
     expect(captured.cwd).toBe("/work/agent-1");
     expect(captured.sessionManager.getLeafId()).toBe("dsh:session-agent-1:0");
-    agent.session.append(DSH_CUSTOM_EVENT, { customType: "later", data: {} });
+    fakeAppendPluginRecord(agent.session, DSH_CUSTOM_EVENT, { customType: "later", data: {} });
     expect(captured.sessionManager.getEntries()).toHaveLength(2);
     expect(captured.sessionManager.getLeafId()).toBe("dsh:session-agent-1:1");
     expect(entries).toHaveLength(1);
@@ -367,7 +378,7 @@ describe("pi-api facade", () => {
 
   test("rejects an incompatible session API instead of reporting missing receipts", async () => {
     const ctx = fakeCtx();
-    const api = createPiApi({ ctx });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
     api.registerTool({
       name: "read-session",
       parameters: { type: "object", properties: {} },
@@ -379,12 +390,12 @@ describe("pi-api facade", () => {
     delete agent.session.snapshotEvents;
     agent.session.events = [];
     await expect(ctx.__tools[0].execute({}, toolRunContext(agent)))
-      .rejects.toThrow("requires DSH 0.2.0-rc.2 session.snapshotEvents()");
+      .rejects.toThrow("requires DSH 0.2.1-rc.2 session.snapshotEvents()");
   });
 
   test("session-bound OHLCV receipts feed short indicator calls without crossing DSH agents", async () => {
     const ctx = fakeCtx();
-    const api = createPiApi({ ctx });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
     const artifact = resolve(import.meta.dir, "../../dist/stock_technicals/index.js");
     const extension = await import(
       `${artifact}?dsh-series-receipt=${Date.now()}-${Math.random()}`
@@ -405,7 +416,7 @@ describe("pi-api facade", () => {
     const canonical = `${sourceReference}\nretrievedAtUnixMilliseconds=${retrievedAtUnixMilliseconds}\ndate,open,high,low,close,volume,amount\n${rows.map((row) => row.join(",")).join("\n")}`;
     const receipt = createHash("sha256").update(canonical).digest("hex");
     const owner = fakeAgent("receipt-owner");
-    owner.session.append(DSH_CUSTOM_EVENT, {
+    fakeAppendPluginRecord(owner.session, DSH_CUSTOM_EVENT, {
       customType: "pi_sparkles_finance_ohlcv.series_handoff.v1",
       data: {
         schema: "pi-sparkles/ohlcv-series-handoff",
@@ -476,7 +487,7 @@ describe("pi-api facade", () => {
 
     try {
       const ctx = fakeCtx();
-      const api = createPiApi({ ctx });
+      const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
       for (const name of ["cn_ohlcv", "stock_technicals", "finance_charts"]) {
         const artifact = resolve(import.meta.dir, `../../dist/${name}/index.js`);
         const extension = await import(
@@ -590,7 +601,7 @@ describe("pi-api facade", () => {
 
     try {
       const ctx = fakeCtx();
-      const api = createPiApi({ ctx });
+      const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
       const artifact = resolve(import.meta.dir, "../../dist/cn_ohlcv/index.js");
       const extension = await import(
         `${artifact}?dsh-sina-explicit=${Date.now()}-${Math.random()}`
@@ -656,7 +667,7 @@ describe("pi-api facade", () => {
 
     try {
       const ctx = fakeCtx();
-      const api = createPiApi({ ctx });
+      const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
       for (const name of ["cn_market_data", "stock_technicals", "finance_charts"]) {
         const artifact = resolve(import.meta.dir, `../../dist/${name}/index.js`);
         const extension = await import(
@@ -772,7 +783,7 @@ describe("pi-api facade", () => {
 
   test("scoped status UI writes whole-value DSH session events", async () => {
     const ctx = fakeCtx();
-    const api = createPiApi({
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord,
       ctx,
       scopedState: true,
       activeTools: () => ["global_tool"],
@@ -798,8 +809,8 @@ describe("pi-api facade", () => {
       signal: new AbortController().signal,
     });
     expect(agent.session.snapshotEvents().map((event) => event.type)).toEqual([
-      "pi-sparkles/status",
-      "pi-sparkles/status",
+      DSH_STATUS_EVENT,
+      DSH_STATUS_EVENT,
     ]);
     expect(agent.session.snapshotEvents().map((event) => event.data)).toEqual([
       { key: "finance-track", text: "CN · CNY" },
@@ -809,7 +820,7 @@ describe("pi-api facade", () => {
 
   test("sendUserMessage queues on the exact invocation agent", async () => {
     const ctx = fakeCtx();
-    const api = createPiApi({ ctx });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
     api.registerCommand("queue", {
       description: "queue work",
       handler: async () => {
@@ -834,7 +845,7 @@ describe("pi-api facade", () => {
 
   test("parallel tool notifications remain invocation-local", async () => {
     const ctx = fakeCtx();
-    const api = createPiApi({ ctx });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
     let releaseFirst;
     const firstPaused = new Promise((resolve) => {
       releaseFirst = resolve;
@@ -866,7 +877,7 @@ describe("pi-api facade", () => {
 
   test("Pi inline images are omitted instead of forged as DSH image blocks", async () => {
     const ctx = fakeCtx();
-    const api = createPiApi({ ctx });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
     api.registerTool({
       name: "chart",
       description: "chart",
@@ -888,7 +899,7 @@ describe("pi-api facade", () => {
 
   test("Pi terminate results conclude the DSH turn without leaking schema fields", async () => {
     const ctx = fakeCtx();
-    const api = createPiApi({ ctx });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });
     api.registerTool({
       name: "terminal",
       description: "terminal",
@@ -926,7 +937,7 @@ describe("pi-api facade", () => {
       [],
       "dsh-sparkles",
       [],
-      new Set(),
+      sessionRuntime(),
     );
     await expect(plugin.apply(ctx, {})).rejects.toThrow(/Registration collision for registerTool 'same_tool'/);
   });
@@ -950,12 +961,12 @@ describe("pi-api facade", () => {
       [],
       "dsh-sparkles",
       [],
-      knownSessionEventTypes,
+      sessionRuntime(knownSessionEventTypes),
     );
-    expect(plugin.inject).toEqual(["tools", "commands", "agents", "systemPrompt"]);
+    expect(plugin.inject).toEqual(["tools", "commands", "agents", "systemPrompt", "workingDirectory"]);
     await plugin.apply(ctx, {});
     expect(knownSessionEventTypes).toEqual(
-      new Set(["turn/start", DSH_CUSTOM_EVENT, DSH_STATUS_EVENT]),
+      new Set(["turn/start", DSH_LEGACY_CUSTOM_EVENT, DSH_LEGACY_STATUS_EVENT]),
     );
     expect(ctx.__tools).toHaveLength(1);
     expect(started).toEqual([]);
@@ -968,14 +979,94 @@ describe("pi-api facade", () => {
     expect(started).toEqual(["startup"]);
   });
 
-  test("loadSessionEventTypes resolves the installed DSH 0.2.0-rc.2 catalog", async () => {
-    const types = await loadSessionEventTypes();
+  test("loadSessionRuntime resolves the installed DSH 0.2.1-rc.2 record API", async () => {
+    const runtime = await loadSessionRuntime();
+    const types = runtime.KNOWN_SESSION_EVENT_TYPES;
+    expect(typeof runtime.appendPluginRecord).toBe("function");
     expect(types).toBeInstanceOf(Set);
     expect(types.has("turn/start")).toBe(true);
-    expect(DSH_HOST_VERSION).toBe("0.2.0-rc.2");
+    expect(DSH_HOST_VERSION).toBe("0.2.1-rc.2");
   });
 
-  test("createPlugin restores from each DSH 0.2.0-rc.2 agent/created source", async () => {
+  test("cwd follows the invoking session's current directory and cancellation", async () => {
+    const ctx = fakeCtx();
+    const api = createPiApi({ ctx });
+    api.registerTool({
+      name: "cwd_probe",
+      parameters: { type: "object", properties: {} },
+      execute: async (_id, _args, _signal, _update, context) => ({
+        content: [{ type: "text", text: context.cwd }],
+        details: { cwd: context.sessionManager.getCwd() },
+      }),
+    });
+    const agent = fakeAgent("moved");
+    agent.session.__cwd = "/work/current";
+    const result = await ctx.__tools[0].execute({}, toolRunContext(agent));
+    expect(result.details.cwd).toBe("/work/current");
+    expect(agent.session.header.cwd).toBe("/work/moved");
+    const control = new AbortController();
+    control.abort(new Error("cancelled invocation"));
+    await expect(ctx.__tools[0].execute({}, { ...toolRunContext(agent), signal: control.signal }))
+      .rejects.toThrow("cancelled invocation");
+  });
+
+  test("reads legacy and new custom records in log order", async () => {
+    const ctx = fakeCtx();
+    const api = createPiApi({ ctx, appendPluginRecord: fakeAppendPluginRecord });
+    api.registerTool({
+      name: "read_records",
+      parameters: { type: "object", properties: {} },
+      execute: async (_id, _args, _signal, _update, context) => ({
+        content: [{ type: "text", text: "records" }],
+        details: { entries: context.sessionManager.getBranch() },
+      }),
+    });
+    const agent = fakeAgent();
+    agent.session.append(DSH_LEGACY_CUSTOM_EVENT, { customType: "old", data: {} });
+    fakeAppendPluginRecord(agent.session, DSH_CUSTOM_EVENT, { customType: "current", data: {} });
+    agent.session.append(DSH_CUSTOM_EVENT, { customType: "missing-ignorable", data: {} });
+    const result = await ctx.__tools[0].execute({}, toolRunContext(agent));
+    expect(result.details.entries.map((entry) => entry.customType)).toEqual(["old", "current"]);
+  });
+
+  test("scoped asynchronous initialization and restore failures veto creation", async () => {
+    for (const phase of ["initialization", "restore"]) {
+      const root = fakeCtx();
+      const plugin = createPlugin([], [], "dsh-sparkles", [["failure", async (api) => {
+        if (phase === "initialization") {
+          await Promise.resolve();
+          throw new Error("initialization rejected");
+        }
+        api.on("session_start", async () => { throw new Error("restore rejected"); });
+      }]], sessionRuntime());
+      await plugin.apply(root, {});
+      const agent = fakeAgent(phase);
+      agent.ctx = fakeCtx();
+      let failure;
+      try { await root.__emit("agent/created", { agent, source: "resume" }); }
+      catch (error) { failure = error; }
+      expect(failure?.message).toContain("DSH scoped plugins failed");
+      expect(failure?.cause?.message).toBe(`${phase} rejected`);
+    }
+  });
+
+  test("startup hooks receive the host creation signal and cancellation vetoes startup", async () => {
+    const root = fakeCtx();
+    const control = new AbortController();
+    const plugin = createPlugin([], [], "dsh-sparkles", [["cancel", (api) => {
+      api.on("session_start", async (_event, context) => {
+        expect(context.signal).toBe(control.signal);
+        control.abort(new Error("startup cancelled"));
+      });
+    }]], sessionRuntime());
+    await plugin.apply(root, {});
+    const agent = fakeAgent();
+    agent.ctx = fakeCtx();
+    await expect(root.__emit("agent/created", { agent, source: "startup", signal: control.signal }))
+      .rejects.toThrow("startup cancelled");
+  });
+
+  test("createPlugin restores from each DSH 0.2.1-rc.2 agent/created source", async () => {
     const ctx = fakeCtx();
     const started = [];
     const plugin = createPlugin(
@@ -986,7 +1077,7 @@ describe("pi-api facade", () => {
       [],
       "dsh-sparkles",
       [],
-      new Set(),
+      sessionRuntime(),
     );
     await plugin.apply(ctx, {});
     for (const source of ["startup", "resume", "clear", "compact"]) {
@@ -1030,7 +1121,7 @@ describe("pi-api facade", () => {
       [],
       "dsh-sparkles",
       [["state", extension, { systemPrompt: "shared", promptName: "shared-state" }]],
-      new Set(),
+      sessionRuntime(),
     );
     await plugin.apply(root, {});
 
@@ -1072,7 +1163,7 @@ describe("pi-api facade", () => {
   test("the DSH watchlist sibling keeps agent isolation and resume without Pi Durable tools", async () => {
     const { extension } = await import(resolve(import.meta.dir, "../../plugins/watchlist/build/dev/javascript/pi_sparkles_watchlist/pi_sparkles_watchlist.mjs"));
     const root = fakeCtx();
-    const plugin = createPlugin([], [], "dsh-sparkles", [["watchlist", extension]], new Set());
+    const plugin = createPlugin([], [], "dsh-sparkles", [["watchlist", extension]], sessionRuntime());
     await plugin.apply(root, {});
     const first = fakeAgent("durable-first"), second = fakeAgent("durable-second");
     first.ctx = fakeCtx(); second.ctx = fakeCtx();
@@ -1104,8 +1195,13 @@ describe("pi-api facade", () => {
     expect(projection.stateSchema.parse(state)).toEqual({
       "finance-track": "HK · HKD",
     });
+    state = projection.apply(state, {
+      type: DSH_STATUS_EVENT, ignorable: true,
+      data: { key: "finance-track", text: "CN · CNY" },
+    });
+    expect(state["finance-track"]).toBe("CN · CNY");
     expect(projection.wire.viewSchema.parse(projection.wire.view(state))).toEqual({
-      values: { "finance-track": "HK · HKD" },
+      values: { "finance-track": "CN · CNY" },
     });
     expect(projection.schema).toBeUndefined();
     expect(projection.view).toBeUndefined();
@@ -1132,6 +1228,7 @@ describe("pi-api facade", () => {
                 useRef(value) {
                   return { current: value };
                 },
+                useEffect(effect) { effect(); },
                 useState(value) {
                   return [value, (next) => stateUpdates.push(next)];
                 },
@@ -1199,13 +1296,25 @@ describe("pi-api facade", () => {
     expect(rendered).toMatchObject({
       type: "div",
       props: {
-        role: "status",
-        tabIndex: 0,
         "data-dsh-sparkles-overlay": "finance-track",
-        style: { cursor: "grab", touchAction: "none" },
+        style: { position: "absolute", bottom: "16px", flexDirection: "column" },
       },
-      child: "US · USD",
     });
+    const badgeOf = (node) => node.child[1].child[1];
+    const badge = badgeOf(rendered);
+    expect(badge).toMatchObject({ props: { role: "status", tabIndex: 0,
+      style: { cursor: "grab", touchAction: "none" } }, child: "US · USD" });
+    const reviewBadge = (ownerSessionId) => overlay.component({
+      useSessions: (selector) => selector({
+        byId: { s1: { id: "s1", retainedBy: { mainView: 1 } } },
+        projectionsBySession: { s1: { values: {
+          piSparklesStatus: { values: { "finance-track": "US · USD" } },
+          piSparklesWatchlistReviews: { ownerSessionId, enabled: true, paused: false, jobs: [{ status: "scheduled" }] },
+        } } },
+      }),
+    });
+    expect(badgeOf(reviewBadge("s1")).child).toBe("US · USD · reviews: 1 active");
+    expect(badgeOf(reviewBadge("other-session")).child).toBe("US · USD");
     let captured = false;
     const overlayNode = {
       offsetParent: {
@@ -1223,7 +1332,7 @@ describe("pi-api facade", () => {
       },
     };
     let prevented = 0;
-    rendered.props.onPointerDown({
+    badge.props.onPointerDown({
       button: 0,
       pointerId: 7,
       clientX: 900,
@@ -1231,23 +1340,23 @@ describe("pi-api facade", () => {
       currentTarget: overlayNode,
       preventDefault: () => prevented += 1,
     });
-    rendered.props.onPointerMove({
+    badge.props.onPointerMove({
       pointerId: 7,
       clientX: 650,
       clientY: 500,
       currentTarget: overlayNode,
       preventDefault: () => prevented += 1,
     });
-    expect(stateUpdates).toContainEqual({ left: 550, top: 450 });
-    rendered.props.onPointerUp({ pointerId: 7, currentTarget: overlayNode });
+    expect(stateUpdates).toContainEqual({ right: 250, bottom: 220 });
+    badge.props.onPointerUp({ pointerId: 7, currentTarget: overlayNode });
     expect(captured).toBe(false);
     expect(prevented).toBe(2);
-    rendered.props.onDoubleClick();
+    badge.props.onDoubleClick();
     expect(stateUpdates.at(-1)).toBeNull();
   });
 
   test("unsupported Pi host effects fail explicitly", () => {
-    const api = createPiApi({ ctx: fakeCtx() });
+    const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx: fakeCtx() });
     expect(() => api.registerShortcut("x", {})).toThrow(
       "Pi API registerShortcut is not supported",
     );

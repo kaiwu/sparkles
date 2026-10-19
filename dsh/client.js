@@ -18,11 +18,11 @@ function overlayBounds(node) {
   }
   return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
 }
-function clampedPosition(node, left, top, bounds) {
+function clampedPosition(node, right, bottom, bounds, floorHeight) {
   var rect = node.getBoundingClientRect();
   return {
-    left: clamp(left, OVERLAY_PADDING, bounds.width - rect.width - OVERLAY_PADDING),
-    top: clamp(top, OVERLAY_PADDING, bounds.height - rect.height - OVERLAY_PADDING)
+    right: clamp(right, OVERLAY_PADDING, bounds.width - rect.width - OVERLAY_PADDING),
+    bottom: clamp(bottom, OVERLAY_PADDING, bounds.height - floorHeight - OVERLAY_PADDING)
   };
 }
 function currentSessionId(state) {
@@ -49,8 +49,38 @@ function trackStatusText(state) {
     ? legacy.values[TRACK_STATUS_KEY]
     : undefined;
 }
+function reviewStatusText(state) {
+  var current = currentSessionId(state);
+  var snapshot = current && state.projectionsBySession && state.projectionsBySession[current];
+  var view = snapshot && snapshot.values && snapshot.values.piSparklesWatchlistReviews;
+  if (!view || view.ownerSessionId !== current || !Array.isArray(view.jobs)) return undefined;
+  if (!view.enabled) return view.jobs.length ? "reviews: off" : undefined;
+  if (view.paused) return "reviews: paused";
+  var active = view.jobs.filter(function (job) { return job.status === "scheduled" || job.status === "running"; }).length;
+  return active ? "reviews: " + active + " active" : "reviews: ready";
+}
+function currentCharts(state) {
+  var current = currentSessionId(state);
+  var snapshot = current && state.projectionsBySession && state.projectionsBySession[current];
+  var view = snapshot && snapshot.values && snapshot.values.piSparklesCharts;
+  return view && view.sessionId === current && Array.isArray(view.charts) ? view : null;
+}
+function chartLabel(chart) {
+  var model = chart.meta.chart;
+  return model.instrumentId + " · " + model.track + "/" + model.mic + " · " + model.bars[0].date + " – " + model.bars[model.bars.length - 1].date;
+}
 function FinanceTrackOverlay(props) {
-  var text = props.useSessions(trackStatusText);
+  var trackText = props.useSessions(trackStatusText);
+  var reviewText = props.useSessions(reviewStatusText);
+  var chartView = props.useSessions(currentCharts);
+  var sessionId = props.useSessions(currentSessionId);
+  var hiddenState = React.useState({});
+  var hiddenBySession = hiddenState[0];
+  var setHidden = hiddenState[1];
+  var hidden = Array.isArray(hiddenBySession[sessionId]) ? hiddenBySession[sessionId] : [];
+  var charts = chartView ? chartView.charts.filter(function (chart) { return chartModel({ kind: "tool-result", meta: chart.meta }) !== null; }) : [];
+  var visible = charts.filter(function (chart) { return hidden.indexOf(chart.id) === -1; });
+  var text = [trackText, reviewText].filter(function (value) { return typeof value === "string" && value.length > 0; }).join(" · ");
   var positionState = React.useState(null);
   var position = positionState[0];
   var setPosition = positionState[1];
@@ -58,22 +88,65 @@ function FinanceTrackOverlay(props) {
   var dragging = draggingState[0];
   var setDragging = draggingState[1];
   var drag = React.useRef(null);
-  if (typeof text !== "string" || text.length === 0) return null;
+  var panel = React.useRef(null);
+  var floor = React.useRef(null);
+  var statusBar = React.useRef(null);
+  var metricsState = React.useState({ height: window.innerHeight, floorHeight: 38, statusWidth: 300 });
+  var metrics = metricsState[0];
+  var setMetrics = metricsState[1];
+  React.useEffect(function () {
+    var node = panel.current;
+    if (!node) return;
+    function measure() {
+      var bounds = overlayBounds(node);
+      var floorHeight = floor.current ? floor.current.getBoundingClientRect().height : 38;
+      var statusWidth = statusBar.current ? statusBar.current.getBoundingClientRect().width : 300;
+      setMetrics(function (previous) {
+        return previous.height === bounds.height && previous.floorHeight === floorHeight && previous.statusWidth === statusWidth
+          ? previous : { height: bounds.height, floorHeight: floorHeight, statusWidth: statusWidth };
+      });
+      setPosition(function (previous) {
+        if (previous === null) return previous;
+        var right = clamp(previous.right, OVERLAY_PADDING, bounds.width - node.getBoundingClientRect().width - OVERLAY_PADDING);
+        var bottom = clamp(previous.bottom, OVERLAY_PADDING, bounds.height - floorHeight - OVERLAY_PADDING);
+        return right === previous.right && bottom === previous.bottom ? previous : { right: right, bottom: bottom };
+      });
+    }
+    measure();
+    var observer = typeof window.ResizeObserver === "function" ? new window.ResizeObserver(measure) : null;
+    if (observer) {
+      observer.observe(node);
+      if (node.offsetParent) observer.observe(node.offsetParent);
+      if (floor.current) observer.observe(floor.current);
+      if (statusBar.current) observer.observe(statusBar.current);
+    }
+    window.addEventListener("resize", measure);
+    return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", measure); };
+  }, [text, charts.length]);
+  if (text.length === 0 && charts.length === 0) return null;
+  function toggleChart(id) {
+    setHidden(function (previous) {
+      var ids = Array.isArray(previous[sessionId]) ? previous[sessionId] : [];
+      var next = Object.assign(Object.create(null), previous);
+      next[sessionId] = ids.indexOf(id) === -1 ? ids.concat(id) : ids.filter(function (value) { return value !== id; });
+      return next;
+    });
+  }
   function onPointerDown(event) {
     if (event.button !== 0) return;
-    var node = event.currentTarget;
+    var node = panel.current || event.currentTarget;
     var rect = node.getBoundingClientRect();
     var bounds = overlayBounds(node);
     drag.current = {
       pointerId: event.pointerId,
       clientX: event.clientX,
       clientY: event.clientY,
-      left: rect.left - bounds.left,
-      top: rect.top - bounds.top,
+      right: bounds.width - rect.width - (rect.left - bounds.left),
+      bottom: bounds.height - rect.height - (rect.top - bounds.top),
       bounds: bounds
     };
-    if (typeof node.setPointerCapture === "function") {
-      node.setPointerCapture(event.pointerId);
+    if (typeof event.currentTarget.setPointerCapture === "function") {
+      event.currentTarget.setPointerCapture(event.pointerId);
     }
     setDragging(true);
     event.preventDefault();
@@ -81,12 +154,13 @@ function FinanceTrackOverlay(props) {
   function onPointerMove(event) {
     var active = drag.current;
     if (!active || active.pointerId !== event.pointerId) return;
-    var node = event.currentTarget;
+    var node = panel.current || event.currentTarget;
     setPosition(clampedPosition(
       node,
-      active.left + event.clientX - active.clientX,
-      active.top + event.clientY - active.clientY,
-      active.bounds
+      active.right - (event.clientX - active.clientX),
+      active.bottom - (event.clientY - active.clientY),
+      active.bounds,
+      metrics.floorHeight
     ));
     event.preventDefault();
   }
@@ -120,14 +194,15 @@ function FinanceTrackOverlay(props) {
     var dx = event.key === "ArrowLeft" ? -delta : event.key === "ArrowRight" ? delta : 0;
     var dy = event.key === "ArrowUp" ? -delta : event.key === "ArrowDown" ? delta : 0;
     if (dx === 0 && dy === 0) return;
-    var node = event.currentTarget;
+    var node = panel.current || event.currentTarget;
     var rect = node.getBoundingClientRect();
     var bounds = overlayBounds(node);
     setPosition(clampedPosition(
       node,
-      rect.left - bounds.left + dx,
-      rect.top - bounds.top + dy,
-      bounds
+      bounds.width - rect.width - (rect.left - bounds.left) - dx,
+      bounds.height - rect.height - (rect.top - bounds.top) - dy,
+      bounds,
+      metrics.floorHeight
     ));
     event.preventDefault();
   }
@@ -135,7 +210,19 @@ function FinanceTrackOverlay(props) {
     position: "absolute",
     right: "16px",
     bottom: "16px",
-    maxWidth: "calc(100vw - 32px)",
+    width: visible.length ? metrics.statusWidth * 1.5 + "px" : "max-content",
+    maxWidth: "calc(100% - 32px)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: "8px",
+    pointerEvents: "none"
+  };
+  if (position !== null) {
+    style.right = position.right + "px";
+    style.bottom = position.bottom + "px";
+  }
+  var badgeStyle = {
     padding: "6px 10px",
     borderRadius: "999px",
     border: "1px solid var(--dsw-alias-border-l2)",
@@ -150,18 +237,39 @@ function FinanceTrackOverlay(props) {
     textOverflow: "ellipsis",
     cursor: dragging ? "grabbing" : "grab",
     touchAction: "none",
-    userSelect: "none"
+    userSelect: "none",
+    pointerEvents: "auto",
+    maxWidth: "100%"
   };
-  if (position !== null) {
-    style.left = position.left + "px";
-    style.top = position.top + "px";
-    style.right = "auto";
-    style.bottom = "auto";
-  }
   return React.createElement("div", {
-    role: "status",
-    "aria-label": "Active finance track. Drag or use arrow keys to move; press Home to reset.",
+    ref: panel,
     "data-dsh-sparkles-overlay": "finance-track",
+    style: style
+  },
+    visible.length === 0 ? null : React.createElement("div", {
+      "data-dsh-sparkles-chart-stack": "true",
+      style: { width: "100%", display: "flex", flexDirection: "column", gap: "8px", maxHeight: Math.max(0, metrics.height - metrics.floorHeight - (position === null ? 16 : position.bottom) - OVERLAY_PADDING - 8) + "px", overflowY: "auto", overscrollBehavior: "contain", pointerEvents: "auto" }
+    }, visible.map(function (chart) {
+      return React.createElement(DshFinanceChart, {
+        key: sessionId + ":" + chart.id, floating: true, chartId: chart.id,
+        block: { kind: "tool-result", meta: chart.meta },
+        onHide: function () { toggleChart(chart.id); }
+      });
+    })),
+    React.createElement("div", { ref: floor, "data-dsh-sparkles-chart-floor": "true", style: { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px", pointerEvents: "auto", maxWidth: "100%" } },
+      charts.length === 0 ? null : React.createElement("details", { style: { background: "var(--dsw-alias-bg-base)", border: "1px solid var(--dsw-alias-border-l2)", borderRadius: "8px", maxWidth: "100%", fontSize: "12px", padding: "4px 8px" } },
+        React.createElement("summary", { style: { cursor: "pointer" } }, "Charts " + visible.length + "/" + charts.length),
+        React.createElement("div", { style: { display: "flex", flexDirection: "column", maxHeight: "120px", overflowY: "auto", paddingTop: "4px" } }, charts.map(function (chart) {
+          return React.createElement("label", { key: chart.id, style: { display: "flex", alignItems: "center", gap: "6px" } },
+            React.createElement("input", { type: "checkbox", checked: hidden.indexOf(chart.id) === -1, onChange: function () { toggleChart(chart.id); }, "aria-label": "Show chart " + chartLabel(chart) }), chartLabel(chart));
+        })),
+        chartView.omittedCharts ? React.createElement("div", null, chartView.omittedCharts + " older charts remain in tool output.") : null
+      ),
+      React.createElement("div", {
+    ref: statusBar,
+    role: "status",
+    "aria-label": "Active finance track. Drag to move the status bar and all charts; arrow keys move, Home resets.",
+    "data-dsh-sparkles-drag-handle": "true",
     "data-dragging": dragging ? "true" : "false",
     tabIndex: 0,
     title: "Drag to move · Arrow keys move · Double-click or Home resets",
@@ -172,8 +280,9 @@ function FinanceTrackOverlay(props) {
     onLostPointerCapture: losePointer,
     onDoubleClick: function () { setPosition(null); },
     onKeyDown: onKeyDown,
-    style: style
-  }, text);
+    style: badgeStyle
+  }, text || "Finance charts"))
+  );
 }
 var CHART_META_SCHEMA = "pi-sparkles/dsh-finance-chart-meta";
 var CHART_PRICE_GUTTER = 72;
@@ -233,6 +342,24 @@ function chartDirectionPalette(track) {
     legend: "green up · red down · gray flat"
   };
 }
+function DshChartToolView(props) {
+  var view = props.useSessions(currentCharts);
+  var retained = view && view.charts.some(function (chart) { return chart.id === props.callId; });
+  if (retained && chartModel(props.block) !== null) {
+    return React.createElement("div", { "data-dsh-sparkles-chart": "tool-output", style: { padding: "8px 10px" } },
+      React.createElement("div", null, "Chart available above the finance status bar. Use Charts there to show or hide it."),
+      React.createElement("details", null, React.createElement("summary", null, "Exact table output"),
+        React.createElement("pre", { style: { overflowX: "auto", whiteSpace: "pre", fontSize: "11px" } }, blockText(props.block))));
+  }
+  // The browser asset can update while the server still runs the old package.
+  // Keep the real chart visible until its exact call reaches the read model.
+  return React.createElement(DshFinanceChart, Object.assign({}, props, {
+    floating: false,
+    notice: view === null
+      ? "Floating charts are unavailable. Showing the chart here; restart DSH if you just updated the package."
+      : "This chart is not in the floating panel. Showing it here.",
+  }));
+}
 function DshFinanceChart(props) {
   var block = props.block;
   var model = chartModel(block);
@@ -240,6 +367,22 @@ function DshFinanceChart(props) {
   var manualState = React.useState(null);
   var manual = manualState[0];
   var setManual = manualState[1];
+  var widthState = React.useState(900);
+  var svgWidth = widthState[0];
+  var setSvgWidth = widthState[1];
+  React.useEffect(function () {
+    var node = ref.current;
+    if (!node) return;
+    function measure() {
+      // Keep axes and labels in CSS pixels when the floating card narrows.
+      setSvgWidth(Math.max(120, Math.round(node.getBoundingClientRect().width - 22)));
+    }
+    measure();
+    var observer = typeof window.ResizeObserver === "function" ? new window.ResizeObserver(measure) : null;
+    if (observer) observer.observe(node);
+    window.addEventListener("resize", measure);
+    return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", measure); };
+  }, [block && block.kind, model !== null]);
   if (block && block.kind !== "tool-result") {
     return React.createElement("div", {
       role: "status",
@@ -261,7 +404,6 @@ function DshFinanceChart(props) {
   var start = Math.max(0, end - count);
   var visible = model.bars.slice(start, end);
   var directionPalette = chartDirectionPalette(model.track);
-  var svgWidth = 900;
   var priceTop = 18;
   var priceBottom = 190;
   var volumeTop = 210;
@@ -284,7 +426,7 @@ function DshFinanceChart(props) {
     if (maximum === minimum) return (priceTop + priceBottom) / 2;
     return priceTop + (maximum - value) * (priceBottom - priceTop) / (maximum - minimum);
   }
-  var candleWidth = Math.max(2, Math.min(12, (svgWidth - CHART_PRICE_GUTTER) / visible.length * 0.62));
+  var candleWidth = Math.max(0.4, Math.min(12, (svgWidth - CHART_PRICE_GUTTER) / visible.length * 0.62));
   var maximumVolume = Math.max.apply(Math, [0].concat(visible.map(function (bar) { return bar.volume; })));
   var svgChildren = [];
   for (var grid = 0; grid < 5; grid += 1) {
@@ -383,16 +525,19 @@ function DshFinanceChart(props) {
     ref: ref,
     role: "figure",
     "aria-label": "OHLCV chart for " + model.instrumentId + " from " + first + " through " + last,
-    "data-dsh-sparkles-chart": "inline",
+    "data-dsh-sparkles-chart": props.floating ? "floating" : "inline",
+    "data-chart-id": props.chartId,
     "data-visible-bars": String(visible.length),
-    style: { margin: "4px 0", padding: "10px", border: "1px solid var(--dsw-alias-border-l2)", borderRadius: "8px", background: "var(--dsw-alias-bg-base)", color: "var(--dsw-alias-text-primary)", overflow: "hidden" }
+    style: { flexShrink: 0, padding: "10px", border: "1px solid var(--dsw-alias-border-l2)", borderRadius: "8px", background: "var(--dsw-alias-bg-base)", color: "var(--dsw-alias-text-primary)", overflow: "hidden" }
   },
+    props.notice ? React.createElement("div", { role: "status", style: { marginBottom: "8px", fontSize: "12px", color: "var(--dsw-alias-text-secondary)" } }, props.notice) : null,
     React.createElement("header", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap" } },
       React.createElement("div", null,
         React.createElement("strong", null, model.instrumentId + " · " + model.track + "/" + model.mic),
         React.createElement("div", { style: { color: "var(--dsw-alias-text-secondary)", fontSize: "12px" } }, first + " – " + last + " · " + visible.length + "/" + model.bars.length + " bars · " + start + " earlier hidden")
       ),
-      controls
+      React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "6px" } }, controls,
+        props.onHide ? React.createElement("button", { type: "button", onClick: props.onHide, "aria-label": "Hide chart " + model.instrumentId, title: "Hide this chart" }, "Hide") : null)
     ),
     React.createElement("svg", { viewBox: "0 0 " + svgWidth + " " + (hasLower ? 356 + (lowerGroups.length - 1) * 72 : 276), width: "100%", height: hasLower ? String(356 + (lowerGroups.length - 1) * 72) : "276", preserveAspectRatio: "none", role: "img", "aria-hidden": "true", style: { display: "block", minWidth: 0 } }, svgChildren),
     React.createElement("div", { style: { display: "flex", gap: "12px", flexWrap: "wrap", color: "var(--dsw-alias-text-secondary)", fontSize: "11px" } },
@@ -422,8 +567,8 @@ function apply(ctx) {
       name: "tool.call.toolview",
       key: "chart_ohlcv",
       order: 100,
-      label: "Pi Sparkles inline OHLCV chart"
-    }, DshFinanceChart);
+      label: "Pi Sparkles chart output"
+    }, DshChartToolView);
   });
 }
 module.exports = { inject: inject, apply: apply };

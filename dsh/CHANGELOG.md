@@ -5,6 +5,45 @@ follow Semantic Versioning. The exact tier, plugin inventory, maturity, and
 content hashes remain authoritative in each tarball's `dsh-lock.json` and
 `release-lock.json`.
 
+## 0.1.16 - 2026-10-18
+
+- Size the floating chart stack to 1.5 times its measured status-bar width,
+  updating with status changes and fitting within the available screen.
+
+- Keep the inline chart when the current server has no floating projection or
+  the exact call is outside its retained history. Announce panel availability
+  only after confirming that call is present in the session projection.
+
+- Move browser charts above the floating finance status bar. Dragging the bar
+  moves the whole vertical stack; hiding a middle chart closes its gap above
+  the same floor. Each chart has Hide and an individual show/hide checkbox.
+- Project settled native and PTC chart metadata from the session log, so
+  collapsing tool output cannot hide a chart. Keep the latest 12 in the panel,
+  retain exact output in the transcript, and isolate visibility by session.
+- Complete local DSH visual review and the native review role gate for T6.
+
+- Add a DSH-native durable watchlist review runner using the shared Gleam laws,
+  session-owned DSH storage and an exclusive writer lease. Expose opt-in, exact
+  snapshot saves, bounded one-off/recurring reviews, history and cancellation.
+- Preserve pinned picks, complete source receipts and crash checkpoints. Reuse
+  completed acquisition, mark interrupted calls unknown, skip missed intervals
+  and retain DSH source-tool policies. CN uses the existing Eastmoney path;
+  HK/US remain track_partial. No model or external notification is scheduled.
+- Project review state into the current-session badge and verify the role with
+  installed DSH services, real storage reopen and a SIGKILL during acquisition.
+
+- Require DSH `0.2.1-rc.2` for the host and tested service peers, add the
+  working-directory peer, and match the host's Node engine range.
+- Write new custom entries and status through DSH's ignorable plugin-record
+  API. Preserve old required-event reads and the explicit v0 migration path.
+- Read invocation cwd from the session working-directory service, including
+  after a directory change and resume.
+- Await scoped initialization, reject restore failures, and propagate agent
+  creation cancellation to lifecycle hooks.
+- Verify installed peers, new/legacy records, directory isolation and resume,
+  and retain both-host package/load coverage. Select DSH 0.1.16 from its own
+  published 0.1.15 baseline; Pi remains at 0.1.13.
+
 ## 0.1.15 - 2026-10-01
 
 - Require installed DSH 0.2.0-rc.2 explicitly for the host and all tested

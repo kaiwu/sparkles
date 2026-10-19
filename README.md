@@ -15,7 +15,7 @@ mutate a paper or live order.
 | Host | npm package | Host-native output | Release state |
 | --- | --- | --- | --- |
 | Pi | [`@pi-sparkles/pi-sparkles`](https://www.npmjs.com/package/@pi-sparkles/pi-sparkles) | terminal components, including responsive colored Unicode OHLCV charts | Published · ProductUseful T1–T6 |
-| DSH | [`@dsh-sparkles/dsh-sparkles`](https://www.npmjs.com/package/@dsh-sparkles/dsh-sparkles) | browser slots, session projections, and responsive inline SVG OHLCV charts | Published · ProductUseful T1–T6 |
+| DSH | [`@dsh-sparkles/dsh-sparkles`](https://www.npmjs.com/package/@dsh-sparkles/dsh-sparkles) | browser slots, session projections, and floating SVG OHLCV charts | Published 0.1.16 · ProductUseful T1–T6 |
 
 ## Install and start
 
@@ -46,7 +46,7 @@ provider fetch. A missing adapter is allowed and never triggers fallback.
 | Inventory | 135 ledger plugins · 142 Gleam plugin packages · 77 finance libraries |
 | Tracks | closed `cn` / `hk` / `us` |
 | Pi release | `@pi-sparkles/pi-sparkles@0.1.13` · tested with Pi `1.0.2` |
-| Tested with | Pi `1.0.2` · DSH `0.2.0-rc.2` · Gleam `1.18.0` · Bun `1.3.14` |
+| Tested with | Pi `1.0.2` · DSH `0.2.1-rc.2` · Gleam `1.18.0` · Bun `1.3.14` |
 
 The seven packages excluded from the aggregate (`hello`, `lifecycle`,
 `safety_gate`, `cn_setup`, `hk_setup`, `cn_fundamentals`, `hk_fundamentals`)
@@ -58,9 +58,12 @@ a whole role tier. Tiers are not a 6×3 track matrix. See
 
 The DSH distribution mounts 131 global-safe shells plus per-agent counterparts for
 track status, swing workbench, portfolio, and watchlist. Its finance track
-status is rendered through DSH's browser `shell.overlay`; its OHLCV chart is a
-keyed inline tool-result card rather than a Pi terminal component. See
+status and vertically stacked OHLCV charts share DSH's browser `shell.overlay`.
+Drag the status bar to move the group; hide/show each chart separately. See
 [dsh/README.md](dsh/README.md).
+
+DSH also provides opt-in, session-owned saved picks and bounded recurring
+reviews through its native storage runner. See [DSH recurring pick reviews](dsh/README.md#recurring-pick-reviews).
 
 ## Remember personal picks with Pi Durable
 

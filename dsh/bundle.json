@@ -1,7 +1,7 @@
 {
   "schema_version": 5,
   "dsh_release": {
-    "version": "0.1.15",
+    "version": "0.1.16",
     "status": "product_useful",
     "target": "T6",
     "reason": null
@@ -25,6 +25,7 @@
     "watchlist"
   ],
   "extra_dsh": [
-    "finance_track_overlay"
+    "finance_track_overlay",
+    "watchlist_reviews"
   ]
 }

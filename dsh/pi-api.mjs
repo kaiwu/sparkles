@@ -19,8 +19,10 @@ const SESSION_START = "session_start";
 const SESSION_SHUTDOWN = "session_shutdown";
 const SESSION_TREE = "session_tree";
 const BEFORE_AGENT_START = "before_agent_start";
-export const DSH_CUSTOM_EVENT = "pi-sparkles/custom";
-export const DSH_STATUS_EVENT = "pi-sparkles/status";
+export const DSH_CUSTOM_EVENT = "plugin:pi-sparkles/custom";
+export const DSH_STATUS_EVENT = "plugin:pi-sparkles/status";
+export const DSH_LEGACY_CUSTOM_EVENT = "pi-sparkles/custom";
+export const DSH_LEGACY_STATUS_EVENT = "pi-sparkles/status";
 export const DSH_CHART_META_SCHEMA = "pi-sparkles/dsh-finance-chart-meta";
 const DSH_CHART_META_MAX_BYTES = 512 * 1024;
 
@@ -81,7 +83,8 @@ function customEntries(agent) {
   return sessionEvents(agent.session)
     .filter(
       (event) =>
-        event?.type === DSH_CUSTOM_EVENT &&
+        (event?.type === DSH_LEGACY_CUSTOM_EVENT ||
+          (event?.type === DSH_CUSTOM_EVENT && event.ignorable === true)) &&
         isRecord(event.data) &&
         typeof event.data.customType === "string",
     )
@@ -95,7 +98,7 @@ function customEntries(agent) {
     }));
 }
 
-function invocationUi(storage, { statusEvents = false } = {}) {
+function invocationUi(storage, { statusEvents = false, appendPluginRecord } = {}) {
   const notify = (message, kind = "info") => {
     const invocation = storage.getStore();
     if (!invocation) {
@@ -106,7 +109,7 @@ function invocationUi(storage, { statusEvents = false } = {}) {
   const writeStatus = (key, text) => {
     if (!statusEvents) unsupported(text === null ? "ui.clearStatus" : "ui.setStatus");
     const agent = currentAgent(storage, text === null ? "ui.clearStatus" : "ui.setStatus");
-    agent.session.append(DSH_STATUS_EVENT, {
+    appendPluginRecord(agent.session, DSH_STATUS_EVENT, {
       key: String(key),
       text: text === null ? null : String(text),
     });
@@ -136,10 +139,10 @@ function invocationUi(storage, { statusEvents = false } = {}) {
 }
 
 /** Build the Pi Context handed to one exact DSH invocation or lifecycle hook. */
-function bridgedContext({ storage, signal, bus, statusEvents }) {
+function bridgedContext({ storage, signal, bus, statusEvents, appendPluginRecord }) {
   const agent = storage.getStore()?.agent;
   const session = agent?.session;
-  const cwd = session?.header?.cwd ?? process.cwd();
+  const cwd = storage.getStore()?.cwd ?? process.cwd();
   const sessionManager = {
     getCwd: () => cwd,
     getSessionDir: () => cwd,
@@ -157,7 +160,7 @@ function bridgedContext({ storage, signal, bus, statusEvents }) {
     cwd,
     mode: "dsh",
     hasUI: true,
-    ui: invocationUi(storage, { statusEvents }),
+    ui: invocationUi(storage, { statusEvents, appendPluginRecord }),
     signal,
     sessionManager,
     events: bus,
@@ -302,6 +305,7 @@ export function financeChartPresentationMeta(value) {
  * @param {object} [options.config] - bundle config ({ flags?: Record<string,string> }).
  * @param {() => string[]} [options.activeTools] - other visible DSH/Pi tool names.
  * @param {boolean} [options.scopedState] - enable session-scoped Pi lifecycle/UI mappings.
+ * @param {Function} options.appendPluginRecord - installed DSH session record writer.
  * @param {(message: string, error?: unknown) => void} [options.log] - diagnostics.
  */
 export function createPiApi({
@@ -309,6 +313,7 @@ export function createPiApi({
   config = {},
   activeTools = () => [],
   scopedState = false,
+  appendPluginRecord = () => unsupported("session plugin records (missing DSH writer)"),
   log = console.warn,
 }) {
   const flags = new Map();
@@ -324,9 +329,19 @@ export function createPiApi({
   const flagNameEnv = (name) =>
     `PI_SPARKLES_FLAG_${name.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase()}`;
   const invocationContext = (signal) =>
-    bridgedContext({ storage: invocations, signal, bus, statusEvents: scopedState });
-  const runWithAgent = (agent, signal, action) =>
-    invocations.run({ agent, signal, notifications: [] }, action);
+    bridgedContext({ storage: invocations, signal, bus, statusEvents: scopedState, appendPluginRecord });
+  const runWithAgent = async (agent, signal, action) => {
+    signal?.throwIfAborted();
+    let cwd;
+    if (agent?.session) {
+      if (typeof ctx.workingDirectory?.get !== "function") {
+        throw new Error("dsh-sparkles: invocation requires DSH workingDirectory service");
+      }
+      cwd = ctx.workingDirectory.get(agent.session);
+    }
+    signal?.throwIfAborted();
+    return invocations.run({ agent, signal, cwd, notifications: [] }, action);
+  };
 
   const api = {
     registerTool(definition) {
@@ -419,7 +434,7 @@ export function createPiApi({
 
     appendEntry(customType, data) {
       const agent = currentAgent(invocations, "appendEntry");
-      agent.session.append(DSH_CUSTOM_EVENT, { customType, data });
+      appendPluginRecord(agent.session, DSH_CUSTOM_EVENT, { customType, data });
     },
 
     sendUserMessage(content, { deliverAs = "followUp" } = {}) {
@@ -503,11 +518,12 @@ export function createPiApi({
       unsupported("exec");
     },
 
-    async _fireSessionStart(agent, reason = "startup") {
-      await runWithAgent(agent, undefined, async () => {
-        const context = invocationContext(undefined);
+    async _fireSessionStart(agent, reason = "startup", signal) {
+      await runWithAgent(agent, signal, async () => {
+        const context = invocationContext(signal);
         for (const handler of sessionStart) {
-          await runEventHook("session_start", handler, { reason }, context, log);
+          signal?.throwIfAborted();
+          await handler({ reason }, context);
         }
       });
     },

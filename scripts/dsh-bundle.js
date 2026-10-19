@@ -41,7 +41,7 @@ import {
 } from "./aggregate-bundle.js";
 import { DIST_DIR, ROOT, WORK_DIR, plugins } from "./modules.js";
 import { readTierManifest } from "./tiers.js";
-import { DSH_RUNTIME_PEERS } from "../dsh/runtime-contract.mjs";
+import { DSH_NODE_ENGINE, DSH_RUNTIME_PEERS } from "../dsh/runtime-contract.mjs";
 import { dshClientFactorySource } from "../dsh/client.js";
 
 const ALLOWED_TARGETS = new Set(["T5", "T6"]);
@@ -304,12 +304,17 @@ function entrySource(plan) {
     (plugin, index) =>
       `  [${JSON.stringify(plugin.shortName)}, extension${index}],`,
   );
-  const dshImports = plan.dshPlugins.map(
-    (plugin, index) =>
-      `import dshExtension${index} from ${JSON.stringify(
-        moduleSpecifier(ENTRY_DIR, plugin.entryPath),
-      )};`,
-  );
+  const dshImports = plan.dshPlugins.map((plugin, index) => {
+    if (plugin.shortName === "watchlist_reviews") {
+      const watchlist = plan.scopedPiPlugins.find((entry) => entry.shortName === "watchlist");
+      if (!watchlist) throw new Error("DSH review runner requires the scoped watchlist core");
+      const laws = join(dirname(compiledPluginEntry(watchlist)), "pi_sparkles_watchlist", "durable.mjs");
+      return `import { createWatchlistReviews as reviewFactory${index} } from ${JSON.stringify(moduleSpecifier(ENTRY_DIR, plugin.entryPath))};
+import * as reviewLaws${index} from ${JSON.stringify(moduleSpecifier(ENTRY_DIR, laws))};
+const dshExtension${index} = reviewFactory${index}(reviewLaws${index});`;
+    }
+    return `import dshExtension${index} from ${JSON.stringify(moduleSpecifier(ENTRY_DIR, plugin.entryPath))};`;
+  });
   const dshRecords = plan.dshPlugins.map(
     (plugin, index) =>
       `  [${JSON.stringify(plugin.shortName)}, dshExtension${index}],`,
@@ -478,6 +483,20 @@ function configurationSource(plan) {
     "Credential values and provider entitlements are caller-owned runtime inputs.",
     "They are read only from the host environment and are never embedded,",
     "logged, written, or persisted by this bundle.",
+    "",
+    "## Durable pick reviews",
+    "",
+    "The DSH-native watchlist_reviews service uses the host storageDomain route",
+    "for sparkles_watchlist_reviews. Records are owned by the original session;",
+    "a new chat imports picks only through an exact snapshotJson/snapshotSha256 handoff.",
+    "Consent, saved picks and jobs are persisted only after conversational opt-in.",
+    "The writer lease defaults to $DSH_HOME/sparkles_reviews/owner.sqlite",
+    "(DSH_HOME defaults to ~/.dsh). A competing process fails before opening the domain.",
+    "config.dsh.watchlist_reviews.lockDirectory may select an exact private absolute",
+    "lease directory; every process sharing a storage route must use the same lease.",
+    "Only bounded fixed-interval CN Eastmoney a_share reviews acquire source facts.",
+    "HK/US remain track_partial. DSH source-tool restrictions, including PTC collapse,",
+    "remain controlling and yield cannot_check without fallback. No model is woken.",
   ];
   return `${lines.join("\n")}\n`;
 }
@@ -499,8 +518,8 @@ mutate a paper or live order.
 
 ## Install
 
-Requires **DSH ${DSH_RUNTIME_PEERS["@deepseek-ai/dsh"]}**, the installed DSH 0.2.0-rc.2 API.
-The host and service peers are pinned exactly; DSH 0.1.7-rc.2 and earlier hosts are unsupported.
+Requires **DSH ${DSH_RUNTIME_PEERS["@deepseek-ai/dsh"]}**, the tested DSH ${DSH_RUNTIME_PEERS["@deepseek-ai/dsh"]} API.
+The host and service peers are pinned exactly; other host versions require a separate compatibility review.
 
 \`\`\`sh
 bun run dsh:bundle
@@ -528,11 +547,13 @@ AAPL" or "compare SMA/RSI/ATR for 600519.SH".
   session's event-sourced status projection; it never calls Pi's TUI APIs. Drag
   the badge or move it with arrow keys when it covers content; double-click or
   press Home to reset it.
-- The package contributes its required \`pi-sparkles/custom\` and
-  \`pi-sparkles/status\` types to DSH 0.2.0-rc.2's process-wide persisted-event
-  catalog before cold session loading, so scoped state and the overlay survive
-  a host restart. DSH 0.2.0-rc.2 has no plugin event-registration API and
-  \`Session.append()\` cannot mark events \`ignorable\`.
+- New custom entries and status use DSH's \`appendPluginRecord\` API under
+  \`plugin:pi-sparkles/\`. They survive replay and are ignorable without the
+  plugin. Legacy required \`pi-sparkles/custom\` and \`pi-sparkles/status\`
+  events remain readable through the compatibility catalog.
+- Invocation cwd comes from DSH's session working-directory service. Scoped
+  initialization and restore failures reject agent creation, and startup
+  cancellation reaches the Pi lifecycle hooks.
 - Tools register through \`ctx.tools\` and are validated against the DSH
   schema subset; the embedded Pi decoders still enforce the full argument
   contract (lengths, ranges, enums) at call time.
@@ -542,9 +563,12 @@ AAPL" or "compare SMA/RSI/ATR for 600519.SH".
   log. No extension-global synthetic session is used.
 - Pi notifications become DSH command/tool text. Unsupported Pi UI and host
   effects fail explicitly instead of reporting placeholder success.
-- Charts remain ordinary inline tool output: Pi owns its ASCII result component;
-  DSH persists bounded chart metadata and renders a keyed browser SVG card. No
-  image, attachment, overlay, file, or data URL carries chart output.
+- Pi owns its inline terminal chart. DSH renders the latest 12 settled charts
+  in a vertical floating stack above the finance status bar. Drag the bar to
+  move the group; Hide or the Charts checkboxes toggle individual cards.
+  Removing a card closes its gap above the same floor. Tall stacks scroll.
+  Chart metadata replays from the current session, independent of collapsed
+  tool output; exact text remains in each result. No image or attachment is used.
 - Provider identity, entitlement, and completeness are never authenticated by
   this bundle; providers and credentials stay caller-owned.
 
@@ -659,7 +683,7 @@ export async function buildDshBundle(
     ],
     dependencies: DSH_RUNTIME_DEPENDENCIES,
     peerDependencies: DSH_RUNTIME_PEERS,
-    engines: { node: ">=22.19.0" },
+    engines: { node: DSH_NODE_ENGINE },
     dsh: {
       bundle: { patch: "./cordis.patch.yml" },
       client: {
@@ -767,7 +791,7 @@ export function verifyDshBundle(directory, plan) {
     manifest.main !== "index.js" ||
     manifest.exports?.["./client"] !== "./client.js" ||
     manifest.private !== !plan.releasable ||
-    manifest.engines?.node !== ">=22.19.0" ||
+    manifest.engines?.node !== DSH_NODE_ENGINE ||
     JSON.stringify(manifest.dependencies) !==
       JSON.stringify(DSH_RUNTIME_DEPENDENCIES) ||
     JSON.stringify(manifest.peerDependencies) !==

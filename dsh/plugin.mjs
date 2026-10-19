@@ -16,8 +16,8 @@ import { delimiter, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   createPiApi,
-  DSH_CUSTOM_EVENT,
-  DSH_STATUS_EVENT,
+  DSH_LEGACY_CUSTOM_EVENT,
+  DSH_LEGACY_STATUS_EVENT,
 } from "./pi-api.mjs";
 import { DSH_HOST_VERSION } from "./runtime-contract.mjs";
 
@@ -70,7 +70,7 @@ function agentServiceContext(agent) {
     throw new Error("DSH agent context has no optional service lookup");
   }
   const scoped = {};
-  for (const name of ["tools", "commands", "systemPrompt"]) {
+  for (const name of ["tools", "commands", "systemPrompt", "workingDirectory"]) {
     const service = agent.ctx.get(name);
     if (service === undefined) {
       throw new Error(`DSH agent context has no active '${name}' service`);
@@ -137,14 +137,14 @@ function hostSessionEntryCandidates() {
   return candidates;
 }
 
-export async function loadSessionEventTypes() {
+export async function loadSessionRuntime() {
   try {
     const hostSession = await import("@deepseek-ai/dsh-session");
-    return hostSession.KNOWN_SESSION_EVENT_TYPES;
+    return hostSession;
   } catch (error) {
     if (error?.code !== "ERR_MODULE_NOT_FOUND") throw error;
   }
-  // DSH 0.2.0-rc.2, like 0.1.7, installs a process-local ESM interceptor at
+  // DSH installs a process-local ESM interceptor at
   // profile load and does not write `.dsh-module-fallback` copies into
   // `$DSH_HOME/profiles/node_modules`. Bare import still works inside the
   // CLI. Vanilla Node (install-smoke, dsh:verify) resolves the same catalog
@@ -154,30 +154,26 @@ export async function loadSessionEventTypes() {
     tried.push(fallback);
     if (!existsSync(fallback)) continue;
     const hostSession = await import(pathToFileURL(fallback).href);
-    return hostSession.KNOWN_SESSION_EVENT_TYPES;
+    return hostSession;
   }
   throw new Error(
     `dsh-sparkles requires DSH ${DSH_HOST_VERSION} @deepseek-ai/dsh-session; looked at ${tried.join(", ")}`,
   );
 }
 
-function registerSessionEventTypes(knownSessionEventTypes) {
+function registerLegacySessionEventTypes(knownSessionEventTypes) {
   if (
     !(knownSessionEventTypes instanceof Set) ||
     typeof knownSessionEventTypes.add !== "function"
   ) {
     throw new Error("DSH session event vocabulary is unavailable");
   }
-  // DSH 0.2.0-rc.2 session format v4 still treats unknown persisted events as
-  // required unless they carry `ignorable: true`, and it still has no public
-  // event-name registration API. `Session.append()` still cannot stamp that
-  // marker, and v0 historical migration refuses unknown types even when
-  // ignorable. The bundle therefore still contributes its two required types
-  // to the live catalog Set before any cold session can load. Vocabulary
-  // knowledge is process-lifetime state, like DSH's compiled catalog, so it
-  // deliberately outlives plugin fibers and HMR disposal.
-  knownSessionEventTypes.add(DSH_CUSTOM_EVENT);
-  knownSessionEventTypes.add(DSH_STATUS_EVENT);
+  // Read compatibility ONLY: old Sparkles releases wrote required events.
+  // Keep those logs loadable without rewriting user history. New writes use
+  // appendPluginRecord and need no catalog entry, even without this plugin.
+  // The frozen v0 migration inventory still requires the explicit old-log tool.
+  knownSessionEventTypes.add(DSH_LEGACY_CUSTOM_EVENT);
+  knownSessionEventTypes.add(DSH_LEGACY_STATUS_EVENT);
 }
 
 /**
@@ -190,8 +186,8 @@ function registerSessionEventTypes(knownSessionEventTypes) {
  * @param {Array<[string, Function, object?]>} scopedExtensions
  *   Pi shells that must be instantiated once per DSH agent rather than once
  *   per host process. The optional metadata can contribute one shared prompt.
- * @param {Set<string>|undefined} knownSessionEventTypes - optional injected
- *   DSH persisted-event vocabulary for deterministic tests.
+ * @param {object|undefined} sessionRuntime - optional injected DSH session
+ *   module for deterministic tests.
  * @returns the Cordis plugin `{ name, inject, apply }`.
  */
 export function createPlugin(
@@ -199,7 +195,7 @@ export function createPlugin(
   dshExtensionsOrName = [],
   pluginName = "dsh-sparkles",
   scopedExtensions = [],
-  knownSessionEventTypes,
+  sessionRuntime,
 ) {
   const dshExtensions = Array.isArray(dshExtensionsOrName)
     ? dshExtensionsOrName
@@ -214,13 +210,15 @@ export function createPlugin(
   };
   return {
     name: resolvedPluginName,
-    inject: ["tools", "commands", "agents", "systemPrompt"],
+    inject: ["tools", "commands", "agents", "systemPrompt", "workingDirectory"],
     async apply(ctx, config) {
-      registerSessionEventTypes(
-        knownSessionEventTypes ?? await loadSessionEventTypes(),
-      );
+      const session = sessionRuntime ?? await loadSessionRuntime();
+      if (typeof session.appendPluginRecord !== "function") {
+        throw new Error(`dsh-sparkles requires DSH ${DSH_HOST_VERSION} appendPluginRecord()`);
+      }
+      registerLegacySessionEventTypes(session.KNOWN_SESSION_EVENT_TYPES);
       const registrations = new Map();
-      const api = createPiApi({ ctx, config: config ?? {} });
+      const api = createPiApi({ ctx, config: config ?? {}, appendPluginRecord: session.appendPluginRecord });
       for (const [shortName, extension] of extensions) {
         if (typeof extension !== "function") {
           throw new Error(`${shortName} has no extension factory`);
@@ -246,12 +244,13 @@ export function createPlugin(
         await ctx.plugin(extension, extensionConfig);
       }
       const scopedApis = new Map();
-      // DSH 0.2.0-rc.2 keeps the 0.1.7 lifecycle: there is no
+      // DSH 0.2.1-rc.2 keeps the serial lifecycle: there is no
       // `agent/session-start`. Serial `agent/created` carries `source`
       // (`startup` | `resume` | `clear` | `compact`) and is the
       // publication/startup boundary: compose scoped shells first so a
       // failed registration can veto, then restore from the live session log.
-      ctx.on("agent/created", async ({ agent, source }) => {
+      ctx.on("agent/created", async ({ agent, source, signal }) => {
+        signal?.throwIfAborted();
         if (!agent?.ctx) {
           throw new Error("DSH agent has no scoped Cordis context");
         }
@@ -269,6 +268,7 @@ export function createPlugin(
           config: config ?? {},
           activeTools: () => api._registeredToolNames(),
           scopedState: true,
+          appendPluginRecord: session.appendPluginRecord,
         });
         scopedApis.set(agent, scopedApi);
         let expectedBeforeAgentStart = 0;
@@ -278,18 +278,14 @@ export function createPlugin(
               throw new Error(`${shortName} has no scoped extension factory`);
             }
             trace(`loading scoped ${shortName} for ${String(agent.id)}`);
-            const loaded = extension(
+            await extension(
               scopedApiForAgent(
                 scopedApi,
                 shortName,
                 scopedRegistrations,
               ),
             );
-            Promise.resolve(loaded).catch((error) => {
-              ctx.logger?.warn?.(
-                `[dsh-sparkles] scoped ${shortName} initialization failed: ${String(error)}`,
-              );
-            });
+            signal?.throwIfAborted();
             if (typeof metadata.systemPrompt === "string") {
               expectedBeforeAgentStart += 1;
               scopedCtx.systemPrompt.section({
@@ -305,17 +301,19 @@ export function createPlugin(
               `Scoped Pi before_agent_start handlers (${eventCounts.beforeAgentStart}) do not match DSH prompt contributions (${expectedBeforeAgentStart})`,
             );
           }
+          const reason = sessionStartReason(source);
+          await api._fireSessionStart(agent, reason, signal);
+          await scopedApi._fireSessionStart(agent, reason, signal);
+          signal?.throwIfAborted();
         } catch (error) {
           scopedApis.delete(agent);
           trace(`scoped composition failed for ${String(agent.id)}:`, error);
+          signal?.throwIfAborted();
           throw new Error(
             `DSH scoped plugins failed for agent '${String(agent.id)}'`,
             { cause: error },
           );
         }
-        const reason = sessionStartReason(source);
-        await api._fireSessionStart(agent, reason);
-        await scopedApis.get(agent)?._fireSessionStart(agent, reason);
       });
       ctx.on("agent/disposed", async ({ agent }) => {
         const scoped = scopedApis.get(agent);

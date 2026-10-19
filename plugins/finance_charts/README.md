@@ -53,7 +53,7 @@ zero-width vertical overlay, five useful price ticks, proportional
 three-row `▁`…`█` volume across 24 eighth-row heights, and unit-separated lower-indicator panes. Exact decimal strings and source
 facts in structured details remain controlling; terminal coordinates are not
 a new observation, analytics result, or evidence claim. DSH consumes the same
-validated result but owns a separate inline browser renderer described in
+validated result but owns a floating browser chart stack described in
 [`../../CHARTS.md`](../../CHARTS.md).
 
 ## Verification

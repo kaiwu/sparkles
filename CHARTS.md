@@ -1,4 +1,4 @@
-# Inline OHLCV chart design
+# OHLCV chart design
 
 ## Scope and invariants
 
@@ -16,12 +16,12 @@ numbers only for screen coordinates.
 The two renderers are deliberately host-exclusive:
 
 - Pi renders a colored Unicode chart in the normal inline tool-result component.
-- DeepSeek Harness (DSH) renders an interactive browser chart in the normal
-  `chart_ohlcv` tool-result card.
+- DeepSeek Harness (DSH) renders interactive browser charts in a floating
+  vertical stack above the finance status bar.
 
-Neither host creates an overlay, image block, attachment, data URL, temporary
-file, download, or out-of-band chart. The finance-track DSH overlay is a
-separate navigation surface and is not used by charts.
+DSH uses its native `shell.overlay`; Pi retains its terminal result component.
+Neither creates image blocks, attachments, data URLs, temporary chart files or
+downloads. Both retain exact text and structured evidence in ordinary results.
 
 ## Shared result contract
 
@@ -111,11 +111,33 @@ recognizes the exact chart-result schema and uses DSH's native
 settled `tool/result` event. Other tools are unchanged. Pi-only image blocks are
 not produced and are not translated to DSH attachments.
 
-The browser package registers a keyed `tool.call.toolview` contribution for
-`chart_ohlcv`. This replaces only the generic row for that tool and renders
-inside the transcript at the result's normal position. The card reads only the
-current result block's persisted `meta`; it does not use process-global or
-session-global chart state.
+The registered `piSparklesCharts` session projection folds settled `tool/result`
+and `tool/ptc-dispatch` metadata independently of the transcript's disclosure or
+virtualization state. It retains the latest 12 charts, each under the existing
+512 KiB metadata budget, with a stable call identity. The browser reads only the
+main-view session's projection. Replay reconstructs the stack from the log;
+one session cannot supply another session's live charts.
+
+The existing finance `shell.overlay` owns one bottom/right anchored group:
+chart cards in chronological order above the status bar. Cards use normal
+vertical flex flow and measure 1.5 times the status-bar width, capped to the
+available screen width. They use a gap and no absolute positioning. The status
+bar is the floor. Hiding a middle card closes its gap, moving cards above down while
+those below remain in place. The bar's pointer and keyboard drag controls move
+the entire group; chart pan/zoom and visibility controls do not initiate a drag.
+Tall stacks scroll within the available space above the bar.
+
+Each card has a Hide button. The Charts control above the bar exposes a
+separate checkbox for each retained chart, including hidden ones. Visibility
+is browser-local, keyed by session and call identity, and resets on page reload.
+The keyed `tool.call.toolview` contribution retains the exact text output and
+points to the floating panel; collapsing it cannot hide a floating chart. Older
+results beyond the 12-card panel budget retain their exact transcript output.
+The compact tool notice is shown only when the exact call is in the projection.
+If an older running server lacks that projection, or the call is outside the
+retained history, the tool view keeps a real inline chart and exact fallback.
+Restart the DSH server after package updates; refreshing the browser alone does
+not reload server plugins or projections.
 
 The card opens each result at its full returned range, so replacing a 60-bar
 result with a 240-bar result immediately expands the x-axis to all 240 bars.
@@ -162,6 +184,10 @@ tests prove no image output, custom component registration, width-bounded
 Unicode, CN/HK/US theme palettes, monotonic visible capacity, latest-suffix
 anchoring, expanded fallback, and cancellation. DSH tests prove presentation metadata is added only for the exact
 chart schema, keyed slot registration, full-range initial rendering, result-bound
-pan/zoom state, malformed-metadata fallback, and client discovery/package
-locking, including independent RSI/ATR panes. Installed DSH verification executes a representative chart call and
-checks that its settled result event exposes the expected metadata.
+pan/zoom state, malformed-metadata fallback, vertical stacking with a fixed floor,
+middle-card removal, individual hide/show, session isolation, and client
+discovery/package locking, including independent RSI/ATR panes. Installed DSH
+verification executes a representative chart call, drives the registered
+projection with native and nested result events, and proves fresh-session
+replay. Local DSH visual review, the 1.5× width adjustment and the 2026-10-18
+release instruction complete this floating panel's manual acceptance.

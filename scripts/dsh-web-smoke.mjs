@@ -62,7 +62,7 @@ export async function verifyInstalledDshWeb(dshCommand, profile) {
     const asset = await fetch(assetUrl, { headers, signal: AbortSignal.timeout(5000) });
     assert.equal(asset.status, 200);
     const source = await asset.text();
-    for (const marker of ["window.__ModuleLoader__.load", "shell.overlay", "tool.call.toolview"]) {
+    for (const marker of ["window.__ModuleLoader__.load", "shell.overlay", "tool.call.toolview", "piSparklesCharts", "data-dsh-sparkles-chart-stack"]) {
       assert.ok(source.includes(marker), `served Sparkles client omitted ${marker}`);
     }
     return { clientDiscovery: true, servedAssets: true, visualQA: false };

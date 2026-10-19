@@ -24,6 +24,7 @@ import {
   verifyDshNpmPackageDirectory,
   verifyDshNpmRelease,
 } from "../../scripts/dsh-npm-package.js";
+import { DSH_NODE_ENGINE } from "../../dsh/runtime-contract.mjs";
 import { readTierManifest } from "../../scripts/tiers.js";
 
 const temporaryDirectories = [];
@@ -115,7 +116,7 @@ function writeFixtureBundle(plan) {
         main: "index.js",
         exports: { ".": "./index.js", "./client": "./client.js" },
         private: !plan.releasable,
-        engines: { node: ">=22.19.0" },
+        engines: { node: DSH_NODE_ENGINE },
         dependencies: DSH_RUNTIME_DEPENDENCIES,
         peerDependencies: DSH_RUNTIME_PEERS,
         dsh: {
@@ -197,15 +198,15 @@ async function buildFixture(plan) {
 
 describe("dsh-sparkles npm packaging", () => {
   test("requires the exact declared DSH host version", () => {
-    const run = () => ({ exitCode: 0, stdout: "0.2.0-rc.2\n", stderr: "" });
+    const run = () => ({ exitCode: 0, stdout: "0.2.1-rc.2\n", stderr: "" });
     expect(
-      assertDshHostVersion("dsh", "0.2.0-rc.2", { run }),
-    ).toBe("0.2.0-rc.2");
+      assertDshHostVersion("dsh", "0.2.1-rc.2", { run }),
+    ).toBe("0.2.1-rc.2");
     expect(() =>
-      assertDshHostVersion("dsh", "0.2.0-rc.2", {
+      assertDshHostVersion("dsh", "0.2.1-rc.2", {
         run: () => ({ exitCode: 0, stdout: "0.1.7-rc.2\n", stderr: "" }),
       }),
-    ).toThrow("Installed DSH host is 0.1.7-rc.2, expected exact 0.2.0-rc.2");
+    ).toThrow("Installed DSH host is 0.1.7-rc.2, expected exact 0.2.1-rc.2");
   });
 
   test("derives the T6 all-in-one bundle and preserves the maturity gate", () => {
@@ -221,7 +222,7 @@ describe("dsh-sparkles npm packaging", () => {
       "portfolio",
       "watchlist",
     ]);
-    expect(t6.extraDshPlugins).toEqual(["finance_track_overlay"]);
+    expect(t6.extraDshPlugins).toEqual(["finance_track_overlay", "watchlist_reviews"]);
     expect(t6.scopedPiProposals).toEqual([
       "finance_track_status",
       "swing_workbench",
@@ -231,10 +232,10 @@ describe("dsh-sparkles npm packaging", () => {
     expect(t6.omittedProposals).toEqual([]);
     expect(t6.partialImplementations).toEqual([]);
     expect(t6.openBlockers).toEqual([]);
-    expect(t6.packageVersion).toBe("0.1.15");
+    expect(t6.packageVersion).toBe("0.1.16");
     expect(t6.maturity).toBe("product_useful_dsh_aggregate");
     expect(t6.dshRelease).toMatchObject({
-      version: "0.1.15",
+      version: "0.1.16",
       status: "product_useful",
       target: "T6",
     });
@@ -247,13 +248,14 @@ describe("dsh-sparkles npm packaging", () => {
 
   test("keeps the DSH release gate independent from Pi maturity", () => {
     const manifest = structuredClone(readTierManifest());
+    const baseline = dshNpmPackagePlan(manifest, "T6");
     for (const tier of manifest.tiers) tier.status = "building";
 
     const t6 = dshNpmPackagePlan(manifest, "T6");
     expect(t6.piAggregateMaturity).toBe("blocked_inventory_preview");
-    expect(t6.dshRelease.status).toBe("product_useful");
-    expect(t6.maturity).toBe("product_useful_dsh_aggregate");
-    expect(t6.releasable).toBeTrue();
+    expect(t6.dshRelease).toEqual(baseline.dshRelease);
+    expect(t6.maturity).toBe(baseline.maturity);
+    expect(t6.releasable).toBe(baseline.releasable);
   });
 
   test("packs a content-locked tarball with the dsh.bundle manifest", async () => {
@@ -308,7 +310,7 @@ describe("dsh-sparkles npm packaging", () => {
       "pdfjs-dist": "6.2.108",
     });
     expect(manifest.peerDependencies).toEqual(DSH_RUNTIME_PEERS);
-    expect(manifest.peerDependencies["@deepseek-ai/dsh"]).toBe("0.2.0-rc.2");
+    expect(manifest.peerDependencies["@deepseek-ai/dsh"]).toBe("0.2.1-rc.2");
     expect(manifest.scripts).toBeUndefined();
     expect(manifest.publishConfig).toEqual({
       access: "public",
@@ -328,7 +330,7 @@ describe("dsh-sparkles npm packaging", () => {
       "utf8",
     );
     expect(packageReadme).toContain("## Quick start");
-    expect(packageReadme).toContain("dsh plugin --profile <name> add @dsh-sparkles/dsh-sparkles");
+    expect(packageReadme).toContain("dsh plugin --profile web add @dsh-sparkles/dsh-sparkles");
     expect(packageReadme).toContain("| Variable | What it enables |");
     expect(packageReadme).toContain("| `AGENT_CONTACT` |");
     expect(packageReadme).toContain("| `TUSHARE_TOKEN` |");

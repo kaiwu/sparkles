@@ -11,10 +11,17 @@
 import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DSH_RUNTIME_PEERS } from "../dsh/runtime-contract.mjs";
+import { createPlugin } from "../dsh/plugin.mjs";
+import { verifyDshWatchlistRole } from "./dsh-watchlist-role.mjs";
+import {
+  createPiApi, DSH_CUSTOM_EVENT, DSH_STATUS_EVENT,
+  DSH_LEGACY_CUSTOM_EVENT, DSH_LEGACY_STATUS_EVENT,
+} from "../dsh/pi-api.mjs";
 import {
   OUTPUT_SCHEMA,
   translateParameters,
@@ -26,30 +33,44 @@ function resolveDshRuntime() {
   let dshBin;
   try {
     dshBin = execFileSync("which", ["dsh"], { encoding: "utf8" }).trim();
-    const real = execFileSync("readlink", ["-f", dshBin], {
-      encoding: "utf8",
-    }).trim();
-    const dshRoot = dirname(dirname(real));
-    const version = JSON.parse(readFileSync(join(dshRoot, "package.json"), "utf8")).version;
-    if (version !== DSH_RUNTIME_PEERS["@deepseek-ai/dsh"]) {
-      throw new Error(`DSH verification requires exact ${DSH_RUNTIME_PEERS["@deepseek-ai/dsh"]}; installed ${version}`);
-    }
-    const packages = join(dshRoot, "node_modules", "@deepseek-ai");
-    const entries = {
-      agent: join(packages, "dsh-agent", "lib", "index.js"),
-      scope: join(packages, "dsh-scope", "lib", "index.js"),
-      session: join(packages, "dsh-session", "lib", "index.js"),
-      sessionProjection: join(packages, "dsh-session-projection", "lib", "index.js"),
-      context: join(packages, "cordis", "lib", "index.js"),
-      systemPrompt: join(packages, "dsh-system-prompt", "lib", "index.js"),
-      tools: join(packages, "dsh-tools", "lib", "index.js"),
-      commands: join(packages, "dsh-commands", "lib", "index.js"),
-    };
-    return Object.values(entries).every(existsSync) ? entries : null;
-  } catch (error) {
-    if (error.message?.startsWith("DSH verification requires")) throw error;
+  } catch {
     return null;
   }
+  const real = execFileSync("readlink", ["-f", dshBin], {
+    encoding: "utf8",
+  }).trim();
+  const dshRoot = dirname(dirname(real));
+  const version = JSON.parse(readFileSync(join(dshRoot, "package.json"), "utf8")).version;
+  if (version !== DSH_RUNTIME_PEERS["@deepseek-ai/dsh"]) {
+    throw new Error(`DSH verification requires exact ${DSH_RUNTIME_PEERS["@deepseek-ai/dsh"]}; installed ${version}`);
+  }
+  const packages = join(dshRoot, "node_modules", "@deepseek-ai");
+  for (const [name, expected] of Object.entries(DSH_RUNTIME_PEERS)) {
+    if (name === "@deepseek-ai/dsh") continue;
+    const manifest = JSON.parse(readFileSync(join(dshRoot, "node_modules", name, "package.json"), "utf8"));
+    if (manifest.version !== expected) {
+      throw new Error(`DSH verification requires exact ${name}@${expected}; installed ${manifest.version}`);
+    }
+  }
+  const entries = {
+    agent: join(packages, "dsh-agent", "lib", "index.js"),
+    scope: join(packages, "dsh-scope", "lib", "index.js"),
+    session: join(packages, "dsh-session", "lib", "index.js"),
+    sessionProjection: join(packages, "dsh-session-projection", "lib", "index.js"),
+    context: join(packages, "cordis", "lib", "index.js"),
+    systemPrompt: join(packages, "dsh-system-prompt", "lib", "index.js"),
+    tools: join(packages, "dsh-tools", "lib", "index.js"),
+    commands: join(packages, "dsh-commands", "lib", "index.js"),
+    workingDirectory: join(packages, "dsh-working-directory", "lib", "index.js"),
+    fsLocal: join(packages, "dsh-fs-local", "lib", "index.js"),
+    storage: join(packages, "dsh-storage", "lib", "index.js"),
+    storageJson: join(packages, "dsh-storage-json", "lib", "index.js"),
+    storageDomain: join(packages, "dsh-storage-domain", "lib", "index.js"),
+  };
+  for (const path of Object.values(entries)) {
+    if (!existsSync(path)) throw new Error(`DSH verification requires installed entry ${path}`);
+  }
+  return entries;
 }
 
 // Pi schema constructors mirroring pi_gleam/src/pi/schema_ffi.mjs.
@@ -141,16 +162,25 @@ export async function verifyAgainstDshTools({
   let overlayProjection = false;
   let chartPresentationMeta = false;
   let receiptHandoffs = false;
+  let pluginRecords = false;
+  let workingDirectory = false;
+  let startupFailures = false;
+  let watchlistReviews = false;
   if (existsSync(bundleEntry)) {
     const [
       { Context },
       { default: SystemPrompt },
       { default: ToolRuntime },
       { default: CommandRuntime },
-      { default: SessionStore, Session, SessionId },
+      { default: SessionStore, Session, SessionId, appendPluginRecord, KNOWN_SESSION_EVENT_TYPES },
       { default: SessionProjectionRegistry },
       { default: AgentRegistry, assembleContextFor },
       { createScope },
+      { default: WorkingDirectory },
+      { default: LocalFileSystem },
+      { default: Storage },
+      StorageJson,
+      StorageDomain,
       { default: plugin },
     ] =
       await Promise.all([
@@ -162,6 +192,11 @@ export async function verifyAgainstDshTools({
         import(pathToFileURL(runtime.sessionProjection).href),
         import(pathToFileURL(runtime.agent).href),
         import(pathToFileURL(runtime.scope).href),
+        import(pathToFileURL(runtime.workingDirectory).href),
+        import(pathToFileURL(runtime.fsLocal).href),
+        import(pathToFileURL(runtime.storage).href),
+        import(pathToFileURL(runtime.storageJson).href),
+        import(pathToFileURL(runtime.storageDomain).href),
         import(`${pathToFileURL(bundleEntry).href}?verify=${Date.now()}`),
       ]);
     const ctx = new Context();
@@ -171,7 +206,34 @@ export async function verifyAgainstDshTools({
     await ctx.plugin(SessionStore);
     await ctx.plugin(SessionProjectionRegistry);
     await ctx.plugin(AgentRegistry);
-    await ctx.plugin(plugin, {});
+    await ctx.plugin(LocalFileSystem);
+    await ctx.plugin(WorkingDirectory, {});
+    const reviewStorage = mkdtempSync(join(tmpdir(), "sparkles-dsh-reviews-"));
+    await ctx.plugin(Storage);
+    await ctx.plugin(StorageJson, { root: reviewStorage });
+    await ctx.plugin(StorageDomain, { backend: "json" });
+    ctx.provide("sessionController", { resolveAgent: async (id) => {
+      const agent = ctx.agents.get(id);
+      return agent ? { agent } : { error: new Error("fixture session is not live") };
+    } });
+    const productFiber = await ctx.plugin(plugin, { dsh: { watchlist_reviews: { lockDirectory: join(reviewStorage, "lease") } } });
+    const legacy = Session.create(SessionId("dsh-legacy-records"), [
+      { type: DSH_LEGACY_STATUS_EVENT, seq: 0, time: 1, data: { key: "finance-track", text: "legacy" } },
+      { type: DSH_LEGACY_CUSTOM_EVENT, seq: 1, time: 2, data: { customType: "legacy", data: { retained: true } } },
+    ]);
+    assert.equal(ctx.sessionProjections.snapshot(legacy).values.piSparklesStatus.values["finance-track"], "legacy");
+    appendPluginRecord(legacy, DSH_STATUS_EVENT, { key: "finance-track", text: "current" });
+    assert.equal(ctx.sessionProjections.snapshot(legacy).values.piSparklesStatus.values["finance-track"], "current");
+    // New records must reopen with the unmodified first-party vocabulary;
+    // only pre-upgrade required events need the compatibility catalog.
+    assert.equal(KNOWN_SESSION_EVENT_TYPES.has(DSH_STATUS_EVENT), false);
+    assert.equal(KNOWN_SESSION_EVENT_TYPES.has(DSH_CUSTOM_EVENT), false);
+    const recordsOnly = Session.create(SessionId("dsh-new-records"));
+    appendPluginRecord(recordsOnly, DSH_CUSTOM_EVENT, { customType: "new", data: { retained: true } });
+    const recordsReopened = Session.create(SessionId("dsh-new-records-reopened"), JSON.parse(JSON.stringify(recordsOnly.snapshotEvents())));
+    assert.equal(recordsReopened.snapshotEvents()[0].ignorable, true);
+    assert.deepEqual(recordsReopened.deriveMessages(), []);
+    pluginRecords = true;
     let createAgentScope;
     await ctx.plugin({
       name: "dsh-sparkles-verify-agent-scope",
@@ -184,7 +246,7 @@ export async function verifyAgainstDshTools({
       throw new Error("real DSH runtime did not initialize the agent scope factory");
     }
 
-    const createAgent = async (rawId, retainedSession, source = "startup") => {
+    const createAgent = async (rawId, retainedSession, source = "startup", signal) => {
       const id = SessionId(rawId);
       const session = retainedSession ??
         ctx.sessions.create(id, { meta: { cwd: process.cwd() } });
@@ -219,10 +281,16 @@ export async function verifyAgainstDshTools({
         runMaintenance: (task) => task(new AbortController().signal),
         whenIdle: () => Promise.resolve(),
       });
-      // DSH 0.2.0-rc.2 `register()` always announces `source: "startup"`. Resume
+      // DSH `register()` always announces `source: "startup"`. Resume
       // restoration needs the real `source` on serial `agent/created`.
       const unregister = ctx.agents.enter(agent, undefined);
-      await ctx.agents.announce(agent, source);
+      try {
+        await ctx.agents.announce(agent, source, signal);
+      } catch (error) {
+        unregister();
+        await scope.dispose();
+        throw error;
+      }
       return { agent, scope, unregister };
     };
 
@@ -310,6 +378,44 @@ export async function verifyAgainstDshTools({
         name,
         arguments: args,
       });
+    const probe = createPiApi({ ctx, appendPluginRecord });
+    probe.registerTool({
+      name: "sparkles_contract_probe",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      execute: async (_id, _args, _signal, _update, context) => ({
+        content: [{ type: "text", text: context.cwd }],
+        details: { cwd: context.cwd, entries: context.sessionManager.getBranch() },
+      }),
+    });
+    ctx.tools.register({
+      name: "sparkles_nested_chart_probe",
+      parameters: { type: "object", properties: {}, additionalProperties: true },
+      output: {
+        schema: { type: "object", additionalProperties: true },
+        render: () => [{ type: "text", text: "Nested chart metadata probe" }],
+      },
+      async execute(args, exec) {
+        const child = await ctx.tools.execute({
+          agent: exec.agent, signal: exec.signal,
+          rootCallId: exec.rootCallId, parent: exec.token,
+          callId: `${exec.callId}-chart`, name: "chart_ohlcv", arguments: args,
+        });
+        assert.equal(child.isError, false);
+        return { meta: child.meta };
+      },
+    });
+    const changedCwd = dirname(process.cwd());
+    await ctx.workingDirectory.set(first.agent, changedCwd);
+    const directoryProbe = await executeFor(first.agent, "sparkles_contract_probe", {}, "directory-probe");
+    assert.equal(directoryProbe.value.details.cwd, changedCwd);
+    assert.equal(first.agent.session.header.cwd, process.cwd());
+    assert.equal(ctx.workingDirectory.get(second.agent.session), process.cwd());
+    const legacyOwner = await createAgent("dsh-legacy-records", legacy, "resume");
+    const legacyProbe = await executeFor(legacyOwner.agent, "sparkles_contract_probe", {}, "legacy-probe");
+    assert.equal(legacyProbe.value.details.entries[0].customType, "legacy");
+    legacyOwner.unregister();
+    await legacyOwner.scope.dispose();
+    workingDirectory = true;
     const trackStatuses = [
       [
         "cn",
@@ -471,6 +577,8 @@ export async function verifyAgainstDshTools({
       retainedFirstSession,
       "resume",
     );
+    const resumedDirectory = await executeFor(resumed.agent, "sparkles_contract_probe", {}, "directory-resumed");
+    assert.equal(resumedDirectory.value.details.cwd, changedCwd);
     await new Promise((resolve) => setTimeout(resolve, 0));
     const resumedWatchlist = await executeFor(
       resumed.agent,
@@ -494,6 +602,10 @@ export async function verifyAgainstDshTools({
       }, `receipt-${track}-restored-chart`);
       assert.equal(chart.meta?.valid, true, `${track} restored OHLCV and indicator receipts`);
       assert.equal(chart.meta?.chart?.bars?.length, 5);
+      const nested = await executeFor(resumed.agent, "sparkles_nested_chart_probe", {
+        seriesReceipt: args.seriesReceipt, maximumBars: 5, indicatorReceipts,
+      }, `receipt-${track}-nested-chart`);
+      assert.deepEqual(nested.value.meta, chart.meta, `${track} nested presentation metadata`);
     }
     receiptHandoffs = true;
 
@@ -567,10 +679,64 @@ export async function verifyAgainstDshTools({
     } else {
       chartPresentationMeta = true;
     }
+    // Drive the actual registered read model with durable native and nested
+    // results. A collapsed/unmounted transcript component plays no role.
+    const chartIds = ["floating-native-1", "floating-native-2", "floating-ptc"];
+    for (const callId of chartIds.slice(0, 2)) {
+      resumed.agent.session.append("tool/result", {
+        turn: 0, step: 0, meta: chart.meta,
+        message: { id: `result-${callId}`, role: "tool", toolCallId: callId,
+          isError: false, source: { kind: "tool", callId }, content: chart.content },
+      }, { surfaceOp: "append" });
+    }
+    resumed.agent.session.append("tool/ptc-dispatch", {
+      rootCallId: "floating-root", parentCallId: "floating-root", subCallId: chartIds[2],
+      name: "chart_ohlcv", arguments: {}, isError: false, content: chart.content, meta: chart.meta,
+    });
+    const floatingView = ctx.sessionProjections.snapshot(resumed.agent.session).values.piSparklesCharts;
+    assert.deepEqual(floatingView.charts.map((entry) => entry.id), chartIds);
+    assert.equal(floatingView.sessionId, String(resumed.agent.session.id));
+    assert.equal(ctx.sessionProjections.snapshot(second.agent.session).values.piSparklesCharts.charts.length, 0);
+    const chartReopened = Session.create(resumed.agent.session.id,
+      JSON.parse(JSON.stringify(resumed.agent.session.snapshotEvents())),
+      JSON.parse(JSON.stringify(resumed.agent.session.header)));
+    assert.deepEqual(ctx.sessionProjections.snapshot(chartReopened).values.piSparklesCharts, floatingView);
     resumed.unregister();
     second.unregister();
     await resumed.scope.dispose();
     await second.scope.dispose();
+    for (const phase of ["initialization", "restore", "cancel"]) {
+      const control = new AbortController();
+      const error = new Error(`expected ${phase} rejection`);
+      const extension = async (api) => {
+        if (phase === "initialization") {
+          await Promise.resolve();
+          throw error;
+        }
+        api.on("session_start", async (_event, context) => {
+          assert.equal(context.signal, control.signal);
+          if (phase === "cancel") control.abort(error);
+          else throw error;
+        });
+      };
+      const fiber = ctx.plugin(createPlugin([], [], `sparkles-verify-${phase}`,
+        [["failure-probe", extension]], { appendPluginRecord, KNOWN_SESSION_EVENT_TYPES }));
+      await fiber;
+      try {
+        const id = `dsh-rejected-${phase}`;
+        await assert.rejects(createAgent(id, undefined, "startup", control.signal), (rejected) =>
+          phase === "cancel" ? rejected === error : rejected.cause === error);
+        assert.equal(ctx.agents.get(SessionId(id)), undefined);
+      } finally {
+        await fiber.dispose();
+      }
+    }
+    startupFailures = true;
+    await productFiber.dispose();
+    await ctx.fiber.dispose();
+    rmSync(reviewStorage, { recursive: true, force: true });
+    const reviewRole = await verifyDshWatchlistRole(bundleEntry);
+    watchlistReviews = reviewRole.watchlistReviews && reviewRole.hardCrashRecovery && reviewRole.policyGuards;
     runtimeSmoke = true;
   }
 
@@ -586,6 +752,10 @@ export async function verifyAgainstDshTools({
     overlayProjection,
     chartPresentationMeta,
     receiptHandoffs,
+    pluginRecords,
+    workingDirectory,
+    startupFailures,
+    watchlistReviews,
   };
 }
 
@@ -599,7 +769,7 @@ if (import.meta.main) {
     console.log(
       `dsh:verify passed ${result.cases} representative schemas against real dsh-tools` +
         (result.runtimeSmoke
-          ? ` and executed the generated bundle (${result.toolCount} tools, scoped counterparts=${result.scopedCounterparts}, overlay projection=${result.overlayProjection}, chart metadata=${result.chartPresentationMeta}, receipt handoffs/resume=${result.receiptHandoffs}) in the real DSH runtime`
+          ? ` and executed the generated bundle (${result.toolCount} tools, scoped counterparts=${result.scopedCounterparts}, overlay projection=${result.overlayProjection}, chart metadata=${result.chartPresentationMeta}, receipt handoffs/resume=${result.receiptHandoffs}, plugin records=${result.pluginRecords}, current cwd=${result.workingDirectory}, startup rejection=${result.startupFailures}, durable reviews=${result.watchlistReviews}) in the real DSH runtime`
           : "; generated bundle not present, runtime execution skipped"),
     );
   } catch (error) {

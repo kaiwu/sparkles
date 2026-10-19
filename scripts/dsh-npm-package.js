@@ -35,6 +35,7 @@ import {
   sep,
 } from "node:path";
 import { DEFAULT_AGGREGATE_TARGET } from "./aggregate-bundle.js";
+import { DSH_NODE_ENGINE } from "../dsh/runtime-contract.mjs";
 import {
   DSH_OUTPUT_DIR,
   DSH_PACKAGE_NAME,
@@ -158,7 +159,9 @@ function dshPackageReadme(plan) {
     ? `## Quick start
 
 \`\`\`sh
-dsh plugin --profile <name> add @dsh-sparkles/dsh-sparkles@${version}
+npm install -g @deepseek-ai/dsh@${DSH_PEERS["@deepseek-ai/dsh"]}
+dsh plugin --profile web add @dsh-sparkles/dsh-sparkles@${version}
+AGENT_CONTACT="you@example.com" dsh web
 \`\`\`
 `
     : `## Local preview install
@@ -181,8 +184,8 @@ This is the DSH distribution of
 package, which reuses the same finance cores but owns separate Pi lifecycle and
 terminal presentation.
 
-Requires **DSH ${DSH_PEERS["@deepseek-ai/dsh"]}**, the installed DSH 0.2.0-rc.2 API.
-The host and service peers are pinned exactly; DSH 0.1.7-rc.2 and earlier hosts are unsupported.
+Requires **DSH ${DSH_PEERS["@deepseek-ai/dsh"]}**, the tested DSH ${DSH_PEERS["@deepseek-ai/dsh"]} API.
+The host and service peers are pinned exactly; other host versions require a separate compatibility review.
 
 Ask about a stock or ETF in everyday language. DSH Sparkles brings current market
 data, price history, company filings, fundamentals, and financial calculations
@@ -199,13 +202,15 @@ into the conversation.
   simulation, read-only broker evidence review, compound compliance checks,
   non-executable handoffs, and receipt reconciliation.
 - Clear source, timestamp, currency, freshness, and data-limit context in answers.
-- Responsive inline SVG OHLCV charts rendered as ordinary DSH tool output.
+- Responsive SVG OHLCV charts stacked above the floating finance status bar.
 
 DSH automatically looks up current evidence for questions about price, trend,
 buying now, or when to sell. You do not need to ask it to "use tools" first.
 
 ${installSection}
 The bundle patch layer is applied on the next \`dsh --profile <name>\` boot.
+Restart the DSH server after an update; browser refresh alone does not reload
+server projections. A chart stays inline until its call is available in the panel.
 Uninstall with \`dsh plugin --profile <name> remove @dsh-sparkles/dsh-sparkles\`.
 
 For most mainland China and Hong Kong quote/history research, and for SEC filing
@@ -224,6 +229,32 @@ Then ask naturally:
 - \`分析腾讯 00700.HK 最近半年的趋势、动量和波动\`
 - \`Summarize AAPL's latest SEC fundamentals and cite the evidence.\`
 - \`Compare this portfolio with its benchmark and explain the largest risks.\`
+
+## Floating charts
+
+Charts appear above the floating finance status bar, independently of collapsed
+tool output. Drag the bar to move the whole group. Hide a card or use its
+checkbox under Charts; cards above close the gap against the same floor. The
+panel keeps the latest 12 charts, scrolls tall stacks and remembers visibility
+separately for each session until reload. Each card is 1.5 times the measured
+status-bar width, capped to the screen, with readable axes, pan, zoom and Reset.
+Exact text remains in tool output. A result stays inline if its floating panel
+is unavailable or its call is outside the retained history.
+
+## Remember picks and schedule checks
+
+Ask Sparkles to remember selected picks in this session. After you accept,
+it can save the exact watchlist and schedule a bounded number of reviews at a
+chosen interval. Saving alone starts no polling. Reviews run while DSH runs,
+without waking a model, and keep source receipts plus interrupted/unknown status.
+Choose up to ten picks, 1–30 reviews, intervals of 1 hour–30 days, and an
+explicit per-review request budget. Repeated request IDs are idempotent;
+changed picks never alter an already scheduled review's pinned snapshot.
+CN checks use the explicitly selected Eastmoney source; HK/US are track_partial.
+DSH tool policies can deny a source check. Inspect status/history or cancel a
+review through conversation; the finance badge shows active or paused reviews.
+Saved picks and jobs remain owned by the original session after resume. Bring
+picks into a new chat through an explicit snapshot handoff.
 
 ## Optional data-service setup
 
@@ -295,7 +326,7 @@ function dshNpmManifest(plan) {
       "gleam",
       "all-in-one",
     ],
-    engines: { node: ">=22.19.0" },
+    engines: { node: DSH_NODE_ENGINE },
     dependencies: runtimeDependencies(),
     peerDependencies: DSH_PEERS,
     dsh: {
@@ -480,7 +511,7 @@ export function verifyDshNpmPackageDirectory(directory, expectedPlan) {
     manifest.exports?.["./client"] !== "./client.js" ||
     JSON.stringify(manifest.files) !== JSON.stringify(DSH_NPM_PACKAGE_FILES) ||
     manifest.license !== "Apache-2.0" ||
-    manifest.engines?.node !== ">=22.19.0" ||
+    manifest.engines?.node !== DSH_NODE_ENGINE ||
     JSON.stringify(manifest.dependencies) !==
       JSON.stringify(expectedRuntimeDependencies) ||
     JSON.stringify(manifest.peerDependencies) !== JSON.stringify(DSH_PEERS) ||
@@ -952,7 +983,7 @@ const loaded = await import(pathToFileURL(process.argv[1]).href);
 const plugin = loaded.default;
 if (typeof plugin?.apply !== "function") throw new Error("entrypoint has no apply");
 if (plugin.name !== "dsh-sparkles") throw new Error("unexpected plugin name: " + plugin.name);
-if (JSON.stringify(plugin.inject) !== JSON.stringify(["tools", "commands", "agents", "systemPrompt"])) throw new Error("unexpected inject: " + JSON.stringify(plugin.inject));
+if (JSON.stringify(plugin.inject) !== JSON.stringify(["tools", "commands", "agents", "systemPrompt", "workingDirectory"])) throw new Error("unexpected inject: " + JSON.stringify(plugin.inject));
 if (globalThis.DOMMatrix !== undefined || globalThis.Path2D !== undefined) throw new Error("DSH entrypoint eagerly initialized PDF canvas globals");`,
           entrypoint,
         ],
@@ -1011,7 +1042,7 @@ const { verifyInstalledDshWeb } = await import(pathToFileURL(process.argv[3]).hr
 const web = await verifyInstalledDshWeb(process.argv[4], process.argv[5]);
 const { verifyAgainstDshTools } = await import(pathToFileURL(process.argv[1]).href);
 const result = await verifyAgainstDshTools({ bundleEntry: process.argv[2] });
-if (result.skipped || !result.runtimeSmoke || !result.receiptHandoffs) {
+if (result.skipped || !result.runtimeSmoke || !result.receiptHandoffs || !result.pluginRecords || !result.workingDirectory || !result.startupFailures || !result.watchlistReviews) {
   throw new Error("Installed DSH runtime/receipt verification did not run");
 }
 console.log("Installed tarball runtime verified: " + JSON.stringify({ ...result, web }));`,

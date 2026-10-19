@@ -251,11 +251,11 @@ browser entrypoint for `shell.overlay`. All 135 ledger components are covered:
 per DSH agent. DSH-only Cordis entries remain in the isolated `dsh/plugins/`
 lane. The exact excluded/scoped/extra lists are recorded in `dsh-lock.json` and
 the manifest's `dshSparkles` section. It declares the exact
-`@deepseek-ai/dsh@0.2.0-rc.2` host peer and pins the tested agent, tool, command,
-system-prompt, session-projection, client-ui-session, and UI-layout service peers
-to `0.2.0-rc.2`. It also pins `pdfjs-dist` and the shared
+`@deepseek-ai/dsh@0.2.1-rc.2` host peer and pins the tested agent, tool, command,
+system-prompt, session-projection, working-directory, client-ui-session, and
+UI-layout service peers to `0.2.1-rc.2`. It also pins `pdfjs-dist` and the shared
 `@napi-rs/canvas@1.0.3` runtime without initializing either during entrypoint
-registration, requires Node 22.19+, and carries the
+registration, requires Node `^22.19.0 || >=24.0.0`, and carries the
 `dsh.bundle.patch` manifest and a content lock (`dsh-lock.json` +
 `release-lock.json` + inner/outer `SHA256SUMS`), and has no lifecycle scripts
 or credential values. The install smoke installs the exact tarball into a clean
@@ -263,9 +263,9 @@ npm prefix, imports the entrypoint to verify its Cordis plugin shape, and
 composes it in an isolated `DSH_HOME` profile with the real `dsh` CLI.
 
 The DSH manifest is independently `product_useful` for T6. The four global
-exclusions have per-agent counterparts, and the inline chart has completed
-installed-profile discovery, resize/interaction, persistence, and visual
-browser acceptance. T5 remains outside the selected DSH release boundary.
+exclusions have per-agent counterparts. Floating charts have completed browser
+interaction and local visual acceptance; the native recurring-review role
+proves session isolation, policy enforcement, store reopen and hard-crash recovery. T5 remains outside the selected DSH release boundary.
 Packaging and verification never publish.
 
 ```sh
@@ -273,19 +273,27 @@ bun run dsh:npm:release:verify
 ```
 
 That gate builds the version explicitly recorded in `dsh/bundle.json`, installs
-it in a clean prefix/profile through the tested DSH `0.2.0-rc.2` CLI, verifies
+it in a clean prefix/profile through the tested DSH `0.2.1-rc.2` CLI, verifies
 receipt consumption/isolation/resume and authenticated web client assets, runs
-`npm publish --dry-run`, and checks version availability. DSH 0.1.7-rc.2 and
-earlier hosts are unsupported by this release.
-The current published release is `0.1.15`; it requires installed DSH
-`0.2.0-rc.2` and is the `latest` dist-tag. Its tarball is:
+`npm publish --dry-run`, and checks version availability. Other host versions
+require a separate compatibility review.
+See [the contract gap analysis](dsh/README.md#contract-review--2026-10-18).
+DSH `0.1.16` is published as `latest`, selected from its own freshly observed
+published `0.1.15` baseline. The reviewed local `0.1.15` candidate was already a
+published version, so the next canonical patch is `0.1.16`. Pi remains `0.1.13`.
+The exact package requires DSH `0.2.1-rc.2` and its pinned service peers.
 
 ```text
-dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.15.tgz
+dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.16.tgz
+sha256: 6ea2ce5878e236dae0f55c4af6e0a92d13d006c681f9a88fcf052669232aae93
 ```
 
-Do not publish that version again. Published `0.1.14` remains the package that
-requires DSH 0.1.7-rc.2. The independent Pi release is `0.1.13`, verified and
-published through its own release gate.
-These are current records, not instructions for choosing or bumping a future
-release. Follow the common procedure above for every release.
+The clean install, release gate, publish dry-run, fresh preflight, npm publication
+response, registry metadata, downloaded tarball integrity and manual client-hash
+comparison are retained with the artifact under `.work/releases/dsh/0.1.16/`.
+The browser client is byte-for-byte identical to the locally reviewed build.
+
+Published `0.1.15` remains the package requiring DSH `0.2.0-rc.2`; `0.1.14`
+remains on DSH `0.1.7-rc.2`. Do not republish those versions. These are release
+records, not a future version-selection rule; inspect fresh registry evidence
+for each subsequent release.
