@@ -1,4 +1,5 @@
 import gleam/dynamic/decode
+import gleam/option.{None}
 import gleeunit
 import gleeunit/should
 import pi/event
@@ -40,4 +41,21 @@ pub fn lifecycle_reason_names_test() {
 pub fn future_lifecycle_reason_is_preserved_test() {
   event.session_start_reason_name(event.StartUnknown("future"))
   |> should.equal("future")
+}
+
+pub fn before_agent_start_message_type_names_test() {
+  event.before_agent_start_message_type_name(event.BeforeAgentStartUser(
+    "",
+    [],
+    None,
+    raw.undefined(),
+  ))
+  |> should.equal("user")
+
+  event.before_agent_start_message_type_name(event.BeforeAgentStartCustom(
+    raw.undefined(),
+    None,
+    raw.undefined(),
+  ))
+  |> should.equal("custom")
 }

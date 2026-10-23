@@ -5,6 +5,14 @@ here. Versions follow Semantic Versioning. The exact selected tier, plugin
 inventory, maturity, and content hashes remain authoritative in each tarball's
 `release-lock.json` and `aggregate-lock.json`.
 
+## 0.1.14 - 2026-10-23
+
+- Decode Pi 1.4.0 `before_agent_start` as a user or custom run and keep finance
+  track routing on both, including extension `sendMessage` turns. A missing
+  `messageType` still counts as a user start so 1.0.x hosts keep working.
+- Test the T6 package against Pi 1.4.0. Bundled Pi Durable, Chord, and Pi AI
+  remain 1.0.2 for the opt-in watchlist.
+
 ## 0.1.13 - 2026-10-04
 
 - Let Pi offer to remember personal watchlist picks across chats through

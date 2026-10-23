@@ -22,7 +22,8 @@ mutate a paper or live order.
 Pi:
 
 ```sh
-pi install npm:@pi-sparkles/pi-sparkles@latest
+npm install --global @earendil-works/pi-coding-agent@1.4.0
+pi install npm:@pi-sparkles/pi-sparkles@0.1.14
 export AGENT_CONTACT="ops@example.com"
 pi --finance-track cn
 ```
@@ -45,8 +46,8 @@ provider fetch. A missing adapter is allowed and never triggers fallback.
 | Tiers | T1–T6 ProductUseful in independent Pi and DSH lanes · 0 open Pi blockers · [tiers.json](tiers.json) |
 | Inventory | 135 ledger plugins · 142 Gleam plugin packages · 77 finance libraries |
 | Tracks | closed `cn` / `hk` / `us` |
-| Pi release | `@pi-sparkles/pi-sparkles@0.1.13` · tested with Pi `1.0.2` |
-| Tested with | Pi `1.0.2` · DSH `0.2.1-rc.2` · Gleam `1.18.0` · Bun `1.3.14` |
+| Pi release | `@pi-sparkles/pi-sparkles@0.1.14` · tested with Pi `1.4.0` |
+| Tested with | Pi `1.4.0` · DSH `0.2.1-rc.2` · Gleam `1.18.0` · Bun `1.3.14` |
 
 The seven packages excluded from the aggregate (`hello`, `lifecycle`,
 `safety_gate`, `cn_setup`, `hk_setup`, `cn_fundamentals`, `hk_fundamentals`)

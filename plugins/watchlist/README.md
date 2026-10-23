@@ -104,7 +104,7 @@ member, and 10,000 mutations per branch.
 
 The Pi sibling lazily bundles Pi Durable 1.0.2, Chord 1.0.2 and Pi AI 1.0.2
 from exact build pins, because compiled Pi does not resolve arbitrary external
-SDK packages. SDK initialization still waits for opt-in. Installed Pi 1.0.2
+SDK packages. SDK initialization still waits for opt-in. Installed Pi 1.4.0
 is tested. The adapter uses JSONL storage with fsync and an OS-released
 SQLite exclusive writer lease. Node 22.19+ or Bun is required. Only one Pi
 process can own a directory; competing writers fail explicitly. Local private

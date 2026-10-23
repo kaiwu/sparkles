@@ -23,6 +23,8 @@ pub const session_before_compact = "session_before_compact"
 
 pub const session_compact = "session_compact"
 
+pub const session_compact_failed = "session_compact_failed"
+
 pub const session_shutdown = "session_shutdown"
 
 pub const session_before_tree = "session_before_tree"
@@ -30,6 +32,8 @@ pub const session_before_tree = "session_before_tree"
 pub const session_tree = "session_tree"
 
 pub const context = "context"
+
+pub const context_with_system = "context_with_system"
 
 pub const before_provider_headers = "before_provider_headers"
 
@@ -42,6 +46,8 @@ pub const before_agent_start = "before_agent_start"
 pub const agent_start = "agent_start"
 
 pub const agent_end = "agent_end"
+
+pub const agent_before_settle = "agent_before_settle"
 
 pub const agent_settled = "agent_settled"
 
@@ -225,6 +231,23 @@ pub type Input {
     source: String,
     streaming_behavior: Option(String),
     images: List(Dynamic),
+    raw: Dynamic,
+  )
+}
+
+/// A run started by a user prompt or by `send_message(..., trigger_turn: True)`.
+/// Pi 1.2.0 tags this as `messageType`; a missing tag is treated as a user start
+/// so 1.0.x hosts keep working.
+pub type BeforeAgentStart {
+  BeforeAgentStartUser(
+    prompt: String,
+    images: List(Dynamic),
+    system_prompt: Option(String),
+    raw: Dynamic,
+  )
+  BeforeAgentStartCustom(
+    message: Dynamic,
+    system_prompt: Option(String),
     raw: Dynamic,
   )
 }
@@ -433,6 +456,18 @@ pub fn on_input(
   handler: fn(Input, Context) -> Promise(Option(Dynamic)),
 ) -> Nil {
   respond_decoded(api, input, input_decoder(), handler)
+}
+
+pub fn on_before_agent_start(
+  api: ExtensionApi,
+  handler: fn(BeforeAgentStart, Context) -> Promise(Option(Dynamic)),
+) -> Nil {
+  respond_decoded(
+    api,
+    before_agent_start,
+    before_agent_start_decoder(),
+    handler,
+  )
 }
 
 pub fn on_turn_start(
@@ -788,6 +823,13 @@ pub fn compaction_reason_name(reason: CompactionReason) -> String {
   }
 }
 
+pub fn before_agent_start_message_type_name(event: BeforeAgentStart) -> String {
+  case event {
+    BeforeAgentStartUser(..) -> "user"
+    BeforeAgentStartCustom(..) -> "custom"
+  }
+}
+
 fn session_start_reason(value: String) -> SessionStartReason {
   case value {
     "startup" -> StartStartup
@@ -858,6 +900,40 @@ fn input_decoder() -> Decoder(Input) {
   )
   use raw <- decode.then(decode.dynamic)
   decode.success(Input(text:, source:, streaming_behavior:, images:, raw:))
+}
+
+fn before_agent_start_decoder() -> Decoder(BeforeAgentStart) {
+  use raw <- decode.then(decode.dynamic)
+  use message_type <- decode.optional_field(
+    "messageType",
+    "user",
+    decode.string,
+  )
+  use system_prompt <- decode.optional_field(
+    "systemPrompt",
+    None,
+    decode.map(decode.string, Some),
+  )
+  case message_type {
+    "custom" -> {
+      use message <- decode.field("message", decode.dynamic)
+      decode.success(BeforeAgentStartCustom(message:, system_prompt:, raw:))
+    }
+    _ -> {
+      use prompt <- decode.optional_field("prompt", "", decode.string)
+      use images <- decode.optional_field(
+        "images",
+        [],
+        decode.list(of: decode.dynamic),
+      )
+      decode.success(BeforeAgentStartUser(
+        prompt:,
+        images:,
+        system_prompt:,
+        raw:,
+      ))
+    }
+  }
 }
 
 fn turn_start_decoder() -> Decoder(TurnStart) {

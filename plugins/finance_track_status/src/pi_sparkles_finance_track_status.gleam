@@ -48,7 +48,7 @@ pub fn extension(api: pi.ExtensionApi) -> Promise(Nil) {
   )
   let runtime = store.new(state.new(configured_track(api)))
 
-  event.respond(api, event.before_agent_start, fn(_event, ctx) {
+  event.on_before_agent_start(api, fn(_start, ctx) {
     let prompt = context.get_system_prompt(ctx) <> "\n\n" <> routing_prompt()
     prompt
     |> event.system_prompt

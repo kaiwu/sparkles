@@ -313,6 +313,43 @@ describe("finance track status binding", () => {
     );
   });
 
+  test("injects routing policy for Pi 1.4.0 user and custom before_agent_start runs", async () => {
+    const instance = await harness();
+    const handler = instance.handlers.get("before_agent_start");
+    const ctx = { getSystemPrompt: () => "base prompt" };
+    const user = await handler(
+      {
+        type: "before_agent_start",
+        messageType: "user",
+        prompt: "Should I buy now?",
+        systemPrompt: "base prompt",
+        systemPromptOptions: {},
+      },
+      ctx,
+    );
+    const custom = await handler(
+      {
+        type: "before_agent_start",
+        messageType: "custom",
+        message: {
+          customType: "pi_sparkles.follow_up",
+          content: "continue",
+          display: true,
+        },
+        systemPrompt: "base prompt",
+        systemPromptOptions: {},
+      },
+      ctx,
+    );
+
+    for (const result of [user, custom]) {
+      expect(result.systemPrompt).toContain("base prompt");
+      expect(result.systemPrompt).toContain(
+        "the first evidence-acquisition step MUST contain only applicable installed Pi Sparkles tools",
+      );
+    }
+  });
+
   test("renders and switches all three isolated track profiles", async () => {
     const instance = await harness();
     const statuses = [];

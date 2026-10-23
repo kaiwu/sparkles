@@ -40,6 +40,7 @@ import { readTierManifest } from "./tiers.js";
 const NPM_RELEASE_SCHEMA_VERSION = 2;
 const PREVIOUS_NPM_RELEASE_SCHEMA_VERSION = 1;
 const NPM_PACKAGE_NAME = "@pi-sparkles/pi-sparkles";
+export const TESTED_PI_HOST_VERSION = "1.4.0";
 const NPM_REGISTRY = "https://registry.npmjs.org/";
 const STARTUP_SMOKE_TIMEOUT_MILLISECONDS = 15_000;
 const NPM_PACKAGE_FILES = [
@@ -371,7 +372,7 @@ Sparkles for Pi is read-only research software: it cannot place, change, or canc
 broker orders. It is not investment, legal, accounting, or tax advice. See
 \`CONFIGURATION.md\` for the complete source and configuration reference.
 
-Version ${version} · Pi package \`${NPM_PACKAGE_NAME}\` · tested with Pi 1.0.2
+Version ${version} · Pi package \`${NPM_PACKAGE_NAME}\` · tested with Pi ${TESTED_PI_HOST_VERSION}
 `;
 }
 

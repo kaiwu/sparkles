@@ -55,10 +55,10 @@ release verification load the T6 all-in-one aggregate entrypoint once so all
 The loader rejects earlier-tier and per-plugin target overrides.
 
 The T5 selection remains the historical 0.1.4 boundary. T6 is ProductUseful
-with zero omissions, partials, or blockers. Published Pi 0.1.13 adds the opt-in
-Pi Durable watchlist and is tested with Pi 1.0.2. Registry integrity matches
-the verified local tarball and `latest` resolves to 0.1.13. This release advanced
-from Pi's independently verified published baseline 0.1.12.
+with zero omissions, partials, or blockers. Published Pi 0.1.14 is the next canonical patch after published baseline
+0.1.13. It is tested with Pi 1.4.0; bundled Pi Durable remains 1.0.2. Install
+`@pi-sparkles/pi-sparkles@0.1.14` on `@earendil-works/pi-coding-agent@1.4.0`.
+Registry `latest` resolves to 0.1.14.
 
 ## Local consumer verification
 
@@ -71,7 +71,7 @@ register the entrypoint through an offline, sessionless RPC request. Both
 startup processes have a 15-second hard limit. For a manual equivalent:
 
 ```sh
-npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.13.tgz
+npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.14.tgz
 printf '%s\n' '{"id":"startup","type":"get_state"}' | pi --no-extensions \
   --extension ./node_modules/@pi-sparkles/pi-sparkles/index.js \
   --mode rpc --no-session --offline
