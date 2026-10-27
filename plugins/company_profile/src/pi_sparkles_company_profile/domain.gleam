@@ -4,6 +4,8 @@ import finance_core/observation
 import finance_core/observation_json
 import finance_core/source
 import finance_core/time.{type Instant}
+import finance_equibles/request as equibles_request
+import finance_equibles/response as equibles_response
 import finance_provenance/identity.{type Sha256}
 import finance_track
 import finance_track/context as track_context
@@ -19,8 +21,13 @@ import gleam/string
 
 const provider = "Twelve Data"
 
+pub type Vendor {
+  TwelveData
+  Equibles
+}
+
 pub type Input {
-  Input(symbol: String, mic: String)
+  Input(symbol: String, mic: String, vendor: Vendor)
 }
 
 pub type Receipt {
@@ -48,9 +55,33 @@ pub type Output {
   Output(summary: String, details: json.Json)
 }
 
+pub type EquiblesReceipt {
+  EquiblesReceipt(
+    endpoint: String,
+    response_byte_length: Int,
+    content_sha256: Sha256,
+    rate_limit: Option(String),
+    rate_remaining: Option(String),
+    rate_reset: Option(String),
+  )
+}
+
+pub type EquiblesCapture {
+  EquiblesCapture(
+    listing: equibles_response.Listing,
+    listing_receipt: EquiblesReceipt,
+    shares: equibles_response.Shares,
+    shares_receipt: EquiblesReceipt,
+    retrieved_at: Instant,
+  )
+}
+
 pub type Error {
   InvalidSymbol
   UnsupportedMic
+  UnsupportedVendor
+  VendorMismatch
+  EquiblesListingMismatch
   InvalidReceipt
   RequestedListingMismatch
   CrossResponseIdentityMismatch
@@ -61,14 +92,33 @@ pub type Error {
 }
 
 pub fn input(symbol: String, mic: String) -> Result(Input, Error) {
+  selected_input(symbol, mic, "twelve_data")
+}
+
+pub fn selected_input(
+  symbol: String,
+  mic: String,
+  vendor: String,
+) -> Result(Input, Error) {
+  use vendor <- result.try(vendor_from_name(vendor))
   case valid_symbol(symbol), supported_mic(mic) {
     False, _ -> Error(InvalidSymbol)
     _, False -> Error(UnsupportedMic)
-    True, True -> Ok(Input(symbol, mic))
+    True, True -> Ok(Input(symbol, mic, vendor))
   }
 }
 
 pub fn assemble(input: Input, capture: Capture) -> Result(Output, Error) {
+  case input.vendor {
+    Equibles -> Error(VendorMismatch)
+    TwelveData -> assemble_twelve_data(input, capture)
+  }
+}
+
+fn assemble_twelve_data(
+  input: Input,
+  capture: Capture,
+) -> Result(Output, Error) {
   use Nil <- result.try(validate_receipt(
     capture.profile_receipt,
     provider_request.profile_path,
@@ -241,6 +291,12 @@ pub fn error_message(value: Error) -> String {
       "company_profile requires an uppercase 1-20 character US symbol"
     UnsupportedMic ->
       "company_profile supports exact XNYS, XNAS, XNGS, XNCM, or XNMS MIC only"
+    UnsupportedVendor ->
+      "company_profile provider must be twelve_data or equibles"
+    VendorMismatch ->
+      "company_profile provider did not match the captured source"
+    EquiblesListingMismatch ->
+      "Equibles snapshot did not match the exact requested US ticker"
     InvalidReceipt -> "company_profile source receipt was invalid"
     RequestedListingMismatch ->
       "Twelve Data profile did not match the exact requested symbol and MIC"
@@ -276,6 +332,14 @@ fn validate_receipt(value: Receipt, endpoint: String) -> Result(Nil, Error) {
   case value.endpoint == endpoint && value.response_byte_length >= 0 {
     True -> Ok(Nil)
     False -> Error(InvalidReceipt)
+  }
+}
+
+fn vendor_from_name(value: String) -> Result(Vendor, Error) {
+  case value {
+    "twelve_data" -> Ok(TwelveData)
+    "equibles" -> Ok(Equibles)
+    _ -> Error(UnsupportedVendor)
   }
 }
 
@@ -389,4 +453,280 @@ fn summary(input: Input, capture: Capture) -> String {
   <> ", "
   <> shares
   <> ". Snapshot retrieval time is not a field effective date; no quality or investment judgment is made."
+}
+
+pub fn assemble_equibles(
+  input: Input,
+  capture: EquiblesCapture,
+) -> Result(Output, Error) {
+  case input.vendor {
+    TwelveData -> Error(VendorMismatch)
+    Equibles -> assemble_equibles_capture(input, capture)
+  }
+}
+
+fn assemble_equibles_capture(
+  input: Input,
+  capture: EquiblesCapture,
+) -> Result(Output, Error) {
+  use Nil <- result.try(validate_equibles_receipt(
+    capture.listing_receipt,
+    equibles_request.screener_path,
+  ))
+  use Nil <- result.try(validate_equibles_receipt(
+    capture.shares_receipt,
+    equibles_request.ownership_path(input.symbol),
+  ))
+  use Nil <- result.try(
+    case
+      capture.listing.ticker == input.symbol
+      && capture.listing.market == "US"
+      && capture.listing.name != ""
+      && capture.shares.ticker == input.symbol
+    {
+      True -> Ok(Nil)
+      False -> Error(EquiblesListingMismatch)
+    },
+  )
+  use context <- result.try(
+    track_context.new(
+      track: finance_track.Us,
+      market_scope: "us_equibles_company_snapshot",
+      venue_mic: None,
+      board: None,
+      timezone: None,
+      source_language: "en-US",
+      providers: ["Equibles"],
+      entitlement: "caller_equibles_plan",
+      limitations: [
+        "provider_listing_snapshot_not_exchange_identity_proof",
+        "caller_mic_not_confirmed_by_provider",
+        "field_effective_dates_not_supplied",
+        "classification_taxonomy_not_named",
+        "no_cross_listing_fallback",
+        "no_profile_to_dossier_judgment",
+        "float_shares_not_supplied",
+        "share_count_not_confirmed_in_listing_units",
+        "contact_and_ceo_not_supplied",
+        "us_listing_only",
+      ],
+    )
+    |> result.map_error(InvalidTrackContext),
+  )
+  use listing_source <- result.try(
+    source.new(
+      "Equibles",
+      equibles_reference(equibles_request.screener_path, input.symbol),
+      source.LicensedVendor,
+    )
+    |> result.map_error(InvalidSource),
+  )
+  use shares_source <- result.try(
+    source.new(
+      "Equibles",
+      equibles_reference(
+        equibles_request.ownership_path(input.symbol),
+        input.symbol,
+      ),
+      source.LicensedVendor,
+    )
+    |> result.map_error(InvalidSource),
+  )
+  let listing_observation =
+    observation.Observation(
+      value: capture.listing,
+      as_of: capture.retrieved_at,
+      retrieved_at: capture.retrieved_at,
+      timezone: None,
+      source: listing_source,
+      evidence_id: Some(identity.sha256_value(
+        capture.listing_receipt.content_sha256,
+      )),
+      freshness: observation.UnknownFreshness,
+      entitlement: observation.UnknownEntitlement,
+      quality: observation.Reported,
+      unit: None,
+      adjustment: None,
+      session: None,
+    )
+  let shares_observation =
+    observation.Observation(
+      value: capture.shares,
+      as_of: capture.retrieved_at,
+      retrieved_at: capture.retrieved_at,
+      timezone: None,
+      source: shares_source,
+      evidence_id: Some(identity.sha256_value(
+        capture.shares_receipt.content_sha256,
+      )),
+      freshness: observation.UnknownFreshness,
+      entitlement: observation.UnknownEntitlement,
+      quality: case capture.shares.shares_outstanding {
+        None -> observation.Missing(observation.Unavailable)
+        Some(_) -> observation.Reported
+      },
+      unit: Some(market.Shares),
+      adjustment: None,
+      session: None,
+    )
+  let fields = [
+    #("schema", json.string("pi-sparkles/company-profile-result")),
+    #("schemaVersion", json.int(1)),
+    #("operation", json.string("company_profile")),
+    #(
+      "listing",
+      json.object([
+        #("symbol", json.string(input.symbol)),
+        #("requestedMic", json.string(input.mic)),
+        #("market", json.string(capture.listing.market)),
+        #("currency", json.string(capture.listing.currency)),
+        #("micConfirmation", json.string("not_supplied_by_provider")),
+        #("identityState", json.string("exact_ticker_match_mic_not_confirmed")),
+      ]),
+    ),
+    #(
+      "profile",
+      observation_json.to_json(listing_observation, equibles_listing_json),
+    ),
+    #(
+      "shares",
+      observation_json.to_json(shares_observation, equibles_shares_json),
+    ),
+    #(
+      "source",
+      json.object([
+        #("provider", json.string("Equibles")),
+        #("api", json.string("REST screener and ownership-summary")),
+        #(
+          "retrievedAtUnixMs",
+          capture.retrieved_at
+            |> time.unix_milliseconds
+            |> int.to_string
+            |> json.string,
+        ),
+        #("screener", equibles_receipt_json(capture.listing_receipt)),
+        #("ownership", equibles_receipt_json(capture.shares_receipt)),
+        #(
+          "receiptState",
+          json.string(
+            "sha256_response_content_bound_not_provider_signature_or_origin_authentication",
+          ),
+        ),
+        #("termsReference", json.string("https://equibles.com/docs/api")),
+      ]),
+    ),
+    #(
+      "scope",
+      json.object([
+        #("providerSnapshotAsOf", json.string("retrieval_time_only")),
+        #("fieldEffectiveAt", json.null()),
+        #("classificationTaxonomy", json.null()),
+        #("sharesMeasurementAt", json.null()),
+        #(
+          "sharesBasis",
+          json.string(
+            "equibles_entity_wide_common_shares_on_current_split_basis",
+          ),
+        ),
+        #("sharesListingUnitCompatibility", json.string("not_established")),
+        #(
+          "institutionalReportDate",
+          json.nullable(capture.shares.institutional_report_date, json.string),
+        ),
+        #(
+          "nullMeaning",
+          json.string("provider_did_not_supply_field_in_response"),
+        ),
+        #("exchangeAuthorityProof", json.null()),
+        #("issuerAuthorityProof", json.null()),
+        #("qualityRating", json.null()),
+        #("investmentJudgment", json.null()),
+      ]),
+    ),
+    #("decisionOwner", json.string("llm")),
+    #("pluginDecisionFields", json.array([], json.string)),
+  ]
+  Ok(Output(
+    equibles_summary(input, capture),
+    json.object(list.append(fields, track_json.result_fields(context))),
+  ))
+}
+
+fn validate_equibles_receipt(
+  value: EquiblesReceipt,
+  endpoint: String,
+) -> Result(Nil, Error) {
+  case value.endpoint == endpoint && value.response_byte_length >= 0 {
+    True -> Ok(Nil)
+    False -> Error(InvalidReceipt)
+  }
+}
+
+fn equibles_reference(endpoint: String, symbol: String) -> String {
+  "https://api.equibles.com" <> endpoint <> " ticker=" <> symbol
+}
+
+fn equibles_receipt_json(value: EquiblesReceipt) -> json.Json {
+  json.object([
+    #("endpoint", json.string(value.endpoint)),
+    #("responseByteLength", json.int(value.response_byte_length)),
+    #("contentSha256", json.string(identity.sha256_value(value.content_sha256))),
+    #("rateLimit", json.nullable(value.rate_limit, json.string)),
+    #("rateRemaining", json.nullable(value.rate_remaining, json.string)),
+    #("rateReset", json.nullable(value.rate_reset, json.string)),
+  ])
+}
+
+fn equibles_listing_json(value: equibles_response.Listing) -> json.Json {
+  json.object([
+    #("ticker", json.string(value.ticker)),
+    #("name", json.string(value.name)),
+    #("market", json.string(value.market)),
+    #("currency", json.string(value.currency)),
+    #("sector", json.nullable(value.sector, json.string)),
+    #("industry", json.nullable(value.industry, json.string)),
+    #("marketCapRaw", json.nullable(value.market_cap, json.string)),
+    #("priceRaw", json.nullable(value.price, json.string)),
+  ])
+}
+
+fn equibles_shares_json(value: equibles_response.Shares) -> json.Json {
+  json.object([
+    #("ticker", json.string(value.ticker)),
+    #("exactListing", json.bool(value.exact_listing)),
+    #("outstanding", share_json(value.shares_outstanding, "sharesOutstanding")),
+    #("float", share_json(None, "not_on_equibles_ownership_summary")),
+    #(
+      "percentUnavailableReason",
+      json.nullable(value.percent_unavailable_reason, json.string),
+    ),
+    #(
+      "institutionalReportDate",
+      json.nullable(value.institutional_report_date, json.string),
+    ),
+  ])
+}
+
+fn equibles_summary(input: Input, capture: EquiblesCapture) -> String {
+  let shares = case capture.shares.shares_outstanding {
+    None -> "shares outstanding not supplied"
+    Some(raw) -> raw <> " provider-reported entity-wide common shares"
+  }
+  let caveat = case capture.shares.percent_unavailable_reason {
+    None -> ""
+    Some(reason) -> " Provider percentage limitation: " <> reason <> "."
+  }
+  "Equibles snapshot for "
+  <> input.symbol
+  <> " at caller MIC "
+  <> input.mic
+  <> ": "
+  <> capture.listing.name
+  <> ", market "
+  <> capture.listing.market
+  <> ", "
+  <> shares
+  <> ". The share count is not confirmed in the requested listing's units; foreign issuers may report ordinary shares rather than US-listed ADRs."
+  <> caveat
+  <> " Equibles did not confirm the MIC. Snapshot retrieval time is not a field effective date; no quality or investment judgment is made."
 }

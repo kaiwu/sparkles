@@ -1,4 +1,6 @@
 import finance_core/time
+import finance_equibles/request as equibles_request
+import finance_equibles/response as equibles_response
 import finance_provenance/identity
 import finance_twelve_data/request as provider_request
 import finance_twelve_data/response
@@ -19,7 +21,9 @@ pub fn input_requires_exact_uppercase_symbol_and_supported_us_mic_test() {
   domain.input("AAPL", "XHKG")
   |> should.equal(Error(domain.UnsupportedMic))
   domain.input("AAPL", "XNGS")
-  |> should.equal(Ok(domain.Input("AAPL", "XNGS")))
+  |> should.equal(Ok(domain.Input("AAPL", "XNGS", domain.TwelveData)))
+  domain.selected_input("AAPL", "XNGS", "other")
+  |> should.equal(Error(domain.UnsupportedVendor))
 }
 
 pub fn complete_profile_preserves_exact_mic_snapshot_fields_and_shares_test() {
@@ -141,6 +145,94 @@ pub fn receipt_endpoint_must_match_the_exact_provider_operation_test() {
   |> should.equal(Error(domain.InvalidReceipt))
 }
 
+pub fn equibles_vendor_cannot_use_a_twelve_data_capture_test() {
+  let assert Ok(input) = domain.selected_input("AAPL", "XNGS", "equibles")
+  domain.assemble(input, complete_capture())
+  |> should.equal(Error(domain.VendorMismatch))
+  let assert Ok(twelve) = domain.input("AAPL", "XNGS")
+  domain.assemble_equibles(twelve, equibles_capture())
+  |> should.equal(Error(domain.VendorMismatch))
+}
+
+pub fn equibles_snapshot_keeps_caller_mic_unconfirmed_test() {
+  let assert Ok(input) = domain.selected_input("AAPL", "XNGS", "equibles")
+  let assert Ok(output) = domain.assemble_equibles(input, equibles_capture())
+  output.summary
+  |> should.equal(
+    "Equibles snapshot for AAPL at caller MIC XNGS: Apple Inc., market US, 14594180000 provider-reported entity-wide common shares. The share count is not confirmed in the requested listing's units; foreign issuers may report ordinary shares rather than US-listed ADRs. Equibles did not confirm the MIC. Snapshot retrieval time is not a field effective date; no quality or investment judgment is made.",
+  )
+  let details = json.to_string(output.details)
+  string.contains(details, "\"requestedMic\":\"XNGS\"") |> should.be_true
+  string.contains(details, "\"micConfirmation\":\"not_supplied_by_provider\"")
+  |> should.be_true
+  string.contains(
+    details,
+    "\"identityState\":\"exact_ticker_match_mic_not_confirmed\"",
+  )
+  |> should.be_true
+  string.contains(details, "\"venueMic\":null") |> should.be_true
+  string.contains(details, "\"providers\":[\"Equibles\"]") |> should.be_true
+  string.contains(details, "\"marketCapRaw\":\"5024411287552.0\"")
+  |> should.be_true
+  string.contains(details, "\"priceRaw\":\"343.91\"") |> should.be_true
+  string.contains(details, "\"exactListing\":false") |> should.be_true
+  string.contains(details, "\"rawValue\":\"14594180000\"") |> should.be_true
+  string.contains(details, "\"institutionalReportDate\":\"2026-09-30\"")
+  |> should.be_true
+  string.contains(
+    details,
+    "\"sharesBasis\":\"equibles_entity_wide_common_shares_on_current_split_basis\"",
+  )
+  |> should.be_true
+  string.contains(details, "\"sharesMeasurementAt\":null") |> should.be_true
+  string.contains(details, "\"percentUnavailableReason\":null")
+  |> should.be_true
+  string.contains(
+    details,
+    "\"sharesListingUnitCompatibility\":\"not_established\"",
+  )
+  |> should.be_true
+  string.contains(details, "\"us_listing_only\"") |> should.be_true
+  string.contains(details, "\"state\":\"not_supplied\"") |> should.be_true
+  string.contains(details, "squeezeScore") |> should.be_false
+}
+
+pub fn equibles_retains_the_provider_percentage_limitation_test() {
+  let assert Ok(input) = domain.selected_input("AAPL", "XNGS", "equibles")
+  let capture = equibles_capture()
+  let reason = "Future provider unit restriction; do not infer compatibility"
+  let assert Ok(output) =
+    domain.assemble_equibles(
+      input,
+      domain.EquiblesCapture(
+        ..capture,
+        shares: equibles_response.Shares(
+          ..capture.shares,
+          percent_unavailable_reason: Some(reason),
+        ),
+      ),
+    )
+  string.contains(output.summary, reason) |> should.be_true
+  string.contains(json.to_string(output.details), reason) |> should.be_true
+}
+
+pub fn equibles_listing_mismatch_fails_closed_test() {
+  let assert Ok(input) = domain.selected_input("MSFT", "XNGS", "equibles")
+  let capture = equibles_capture()
+  let domain.EquiblesCapture(_, _, _, shares_receipt, _) = capture
+  domain.assemble_equibles(
+    input,
+    domain.EquiblesCapture(
+      ..capture,
+      shares_receipt: domain.EquiblesReceipt(
+        ..shares_receipt,
+        endpoint: equibles_request.ownership_path("MSFT"),
+      ),
+    ),
+  )
+  |> should.equal(Error(domain.EquiblesListingMismatch))
+}
+
 fn complete_capture() -> domain.Capture {
   let assert Ok(profile_hash) =
     identity.sha256(
@@ -197,6 +289,54 @@ fn complete_capture() -> domain.Capture {
       Some("60"),
       Some("500"),
       Some("50"),
+    ),
+    retrieved_at,
+  )
+}
+
+fn equibles_capture() -> domain.EquiblesCapture {
+  let assert Ok(listing_hash) =
+    identity.sha256(
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    )
+  let assert Ok(shares_hash) =
+    identity.sha256(
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    )
+  let assert Ok(retrieved_at) = time.instant(1_786_227_200_000)
+  domain.EquiblesCapture(
+    equibles_response.Listing(
+      "AAPL",
+      "Apple Inc.",
+      "US",
+      "USD",
+      Some("Technology"),
+      Some("Consumer Electronics"),
+      Some("5024411287552.0"),
+      Some("343.91"),
+    ),
+    domain.EquiblesReceipt(
+      equibles_request.screener_path,
+      400,
+      listing_hash,
+      Some("100"),
+      Some("98"),
+      Some("1793145600"),
+    ),
+    equibles_response.Shares(
+      "AAPL",
+      False,
+      Some("14594180000"),
+      Some("2026-09-30"),
+      None,
+    ),
+    domain.EquiblesReceipt(
+      equibles_request.ownership_path("AAPL"),
+      800,
+      shares_hash,
+      Some("100"),
+      Some("97"),
+      Some("1793145600"),
     ),
     retrieved_at,
   )

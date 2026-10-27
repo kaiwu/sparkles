@@ -1,6 +1,9 @@
 import extension from "../../../dist/watchlist/index.js";
 import { remember_tool } from "../../../pi_gleam/src/durable_bridge_ffi.mjs";
-const [mode, directory] = process.argv.slice(2);
+const [mode, directory, clock] = process.argv.slice(2);
+// Each child owns its clock so persistence can be tested across a due time
+// without changing the parent test runner's clock or waiting a real minute.
+if (clock !== undefined) Date.now = () => Number(clock);
 const tools = new Map(),
   handlers = new Map(),
   entries = [];
@@ -84,11 +87,11 @@ try {
       userAccepted: true,
       ...(directory ? { directory } : {}),
     });
-  if (mode === "crash") {
-    for (const [symbol, mic] of [
-      ["600000", "XSHG"],
-      ["600519", "XSHG"],
-    ])
+  if (mode === "crash" || mode === "schedule") {
+    const picks = mode === "crash"
+      ? [["600000", "XSHG"], ["600519", "XSHG"]]
+      : [["600519", "XSHG"]];
+    for (const [symbol, mic] of picks)
       await call("watchlist_add", {
         watchlist: "core",
         track: "cn",
@@ -110,15 +113,17 @@ try {
       provider: "eastmoney",
       shareClass: "a_share",
       maximumRequestsPerReview: 2,
-      firstDueUnixMilliseconds: Date.now(),
+      firstDueUnixMilliseconds: Date.now() + (mode === "schedule" ? 60000 : 0),
       intervalMilliseconds: 3600000,
       maximumReviews: 1,
     });
-    await new Promise(() => {});
-  } else if (mode === "resume") {
+    if (mode === "crash") await new Promise(() => {});
+  }
+  if (["schedule", "resume-sleeping", "resume"].includes(mode)) {
+    const expected = mode === "resume" ? "terminal" : "sleeping";
     for (let attempt = 0; attempt < 100; attempt++) {
       const jobs = (await call("watchlist_review_status")).details.jobs;
-      if (jobs[0]?.taskState.status === "terminal") {
+      if (jobs[0]?.taskState.status === expected) {
         console.log(`RESULT:${JSON.stringify(jobs[0])}`);
         break;
       }

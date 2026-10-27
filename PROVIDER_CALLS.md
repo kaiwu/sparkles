@@ -7,7 +7,8 @@ T6 probes are listed separately because they are temporary acceptance lanes,
 not normal `finance_http` adapters.
 
 Status is from the bounded, read-only live audit on 2026-08-19, plus the
-bounded Sina CN endpoint review on 2026-09-02. `decoded` means
+bounded Sina CN endpoint review on 2026-09-02 and Equibles US endpoint review
+on 2026-10-27. `decoded` means
 the built production plugin and its real decoder accepted the response.
 `contract` means the exact live response satisfied the package's bounded media
 or tabular-envelope contract but was not replayed through a product tool.
@@ -20,11 +21,11 @@ rejects a current provider value.
 
 | Coverage class | Calls | Meaning |
 | --- | ---: | --- |
-| Live production-decoded | 33 | Exact request and production decoder passed. |
+| Live production-decoded | 35 | Exact request and production decoder passed. |
 | Live response-contract | 7 | Exact public response passed media/signature/size checks. |
 | Live Tushare schema | 4 | Exact production body returned code 0, exact fields, and valid row widths; calls were not repeated through plugins because of the provider's unusually restrictive rate limits. |
 | Entitlement-blocked | 4 | The supplied free Tushare token is valid but provider code `40203` denies these APIs. |
-| **Total concrete calls** | **48** | Every call was either live-validated or reached an exact, named credential/entitlement boundary. |
+| **Total concrete calls** | **50** | Every call was either live-validated or reached an exact, named credential/entitlement boundary. |
 
 ## Concrete calls
 
@@ -78,6 +79,8 @@ rejects a current provider value.
 | Tushare | `announcements` (`anns_d`) | entitlement-blocked, code `40203` | Same account entitlement boundary. |
 | Twelve Data | `profile` — `/profile` | decoded with official `demo` key | The literal `demo` credential works on the exact production host/path for documented trial symbol `AAPL`. |
 | Twelve Data | `statistics` — `/statistics` | decoded with official `demo` key | Same production request and full decoder passed. This proves trial-symbol compatibility, not general plan entitlement. |
+| Equibles | `screener` — `/v1/screener/stocks?tickers=AAPL&limit=1` | decoded, HTTP 200 on 2026-10-27 | Caller-owned free-tier key from `/tmp/equibles`, supplied only as a secret Bearer header; one exact US row passed through the compiled Pi shell under Node. This does not confirm the caller MIC or establish other symbols' entitlement. |
+| Equibles | `ownership_summary` — `/v1/stocks/AAPL/ownership-summary` | decoded, HTTP 200 on 2026-10-27 | Same bounded invocation; exact outstanding-share token preserved. The foreign-issuer unit limitation and malformed-number cases are scripted regressions, not live conformance claims. |
 
 The normal non-metered audit is `bun run test:live:providers`. A focused
 recheck is `bun run test:live:providers -- --check provider.operation`.
@@ -91,6 +94,29 @@ independently loaded Pi and DSH shells; injected test runtimes remain isolated.
 The architecture lane fails any concrete transport that calls
 `finance_http/transport.send` without the shared limiter. This does not claim
 cross-process coordination or immunity from undocumented provider quotas.
+
+## Equibles US audit and applicability
+
+Equibles is excluded from the unfiltered live audit even when
+`EQUIBLES_API_KEY` is set. To spend its daily allowance, explicitly select
+`bun run test:live:providers -- --check equibles.screener_and_ownership`, with
+the caller's credential supplied to `EQUIBLES_API_KEY` by their own credential
+file/secret loader and `AGENT_CONTACT` configured. The runner never reads key
+files. The check budgets at most two GETs, never retries, and stops before the
+second request if the first fails, including HTTP 429.
+
+The 2026-10-27 live AAPL probe completed both endpoints. A separate TSM probe
+through the installed DSH ToolRuntime failed at the screener transport before
+an HTTP response was observed; no ownership request, retry, or fallback was
+made. DSH's successful scripted Node runtime checks prove bridge/decoder
+behavior only. The unit-caveat and numeric-marker fixes were verified with
+scripted responses in both hosts without further live calls.
+
+| Track | Status | Exact behavior |
+| --- | --- | --- |
+| `us` | bounded provider snapshot | Exact returned ticker and `market: US` required; caller MIC and share-count compatibility with the listing's units remain unconfirmed. `percentUnavailableReason` is preserved verbatim, including ordinary-share versus ADR limitations. |
+| `cn` | unsupported | This adapter rejects non-US screener rows and does not call ownership for them. No CN coverage is inferred from Equibles' broader catalogue. |
+| `hk` | unsupported | Same explicit non-US rejection; no HK adapter or role journey is claimed. |
 
 ## CN/HK Sina alternative applicability
 

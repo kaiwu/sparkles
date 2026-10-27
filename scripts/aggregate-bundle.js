@@ -1,4 +1,7 @@
-import { PI_DURABLE_EXTERNALS } from "./pi-durable-dependencies.js";
+import {
+  PI_DURABLE_EXTERNALS,
+  TESTED_PI_HOST_VERSION,
+} from "./pi-durable-dependencies.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
@@ -500,7 +503,8 @@ and a bounded count; HK/US review acquisition is \`track_partial\`. Jobs run
 while Pi owns the store. Inspect receipts with \`watchlist_review_status\`;
 interrupted reads remain unknown and are not automatically refetched. Disable
 through \`watchlist_durable\` to stop automatic reopening, retaining saved data.
-Pi Durable 1.0.2, Chord 1.0.2 and Pi AI 1.0.2 are pinned and lazily bundled
+Pi Durable, Chord and Pi AI are pinned to the tested Pi ${TESTED_PI_HOST_VERSION}
+release and lazily bundled
 inside the Pi watchlist artifact; no SDK package is resolved at runtime.
 
 | Plugin | Provider | Access | Referenced environment variables |

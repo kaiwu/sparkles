@@ -36,11 +36,12 @@ import {
   ROOT,
 } from "./modules.js";
 import { readTierManifest } from "./tiers.js";
+import { TESTED_PI_HOST_VERSION } from "./pi-durable-dependencies.js";
 
 const NPM_RELEASE_SCHEMA_VERSION = 2;
 const PREVIOUS_NPM_RELEASE_SCHEMA_VERSION = 1;
 const NPM_PACKAGE_NAME = "@pi-sparkles/pi-sparkles";
-export const TESTED_PI_HOST_VERSION = "1.4.0";
+export { TESTED_PI_HOST_VERSION };
 const NPM_REGISTRY = "https://registry.npmjs.org/";
 const STARTUP_SMOKE_TIMEOUT_MILLISECONDS = 15_000;
 const NPM_PACKAGE_FILES = [
@@ -299,7 +300,7 @@ Then ask naturally:
 | --- | --- |
 | Mainland China | Eastmoney quotes and daily history; CNINFO disclosures; optional Tushare symbol, name, corporate-action, earnings, quote, and history data; SSE, SZSE, and BSE calendars and rules |
 | Hong Kong | Eastmoney quotes and daily history; HKEXnews disclosures; HKEX calendar and rules |
-| United States | SEC EDGAR and XBRL filings; optional Alpaca quotes, bars, news, corporate actions, and asset data; optional OpenFIGI identity mapping and Twelve Data company profiles; NYSE and Nasdaq calendars and rules |
+| United States | SEC EDGAR and XBRL filings; optional Alpaca quotes, bars, news, corporate actions, and asset data; optional OpenFIGI identity mapping, Twelve Data company profiles, and Equibles company snapshots; NYSE and Nasdaq calendars and rules |
 | Macroeconomics | Optional Federal Reserve Bank of St. Louis FRED series |
 | Day-trader and execution review | Exact bounded packets supplied by a caller-selected external market-data or broker capability; the package validates declared identity, rights, clocks, sequence, conditions, corrections, limits, and receipts without authenticating the provider |
 | Your own data | Portfolio files and supported structured imports for research and calculation |
@@ -319,7 +320,8 @@ you do not need every variable below.
 | \`TUSHARE_TOKEN\` | Optional Tushare data for mainland China. Tushare permissions and points apply. |
 | \`ALPACA_API_KEY_ID\`, \`ALPACA_API_SECRET_KEY\` | Optional Alpaca US prices, bars, news, corporate actions, and assets. Feed permissions apply. |
 | \`OPENFIGI_API_KEY\` | Optional OpenFIGI identity mapping. |
-| \`TWELVE_DATA_API_KEY\` | Optional Twelve Data company profiles. |
+| \`TWELVE_DATA_API_KEY\` | Optional Twelve Data company profiles. Pass provider \`twelve_data\` or omit it. |
+| \`EQUIBLES_API_KEY\` | Optional Equibles US company snapshots. Pass provider \`equibles\`. This is not a Twelve Data fallback. |
 | \`FRED_API_KEY\` | Optional FRED macroeconomic series. |
 
 Example:
@@ -354,7 +356,8 @@ CN reviews reuse the selected Eastmoney A-share quote tool and runtime
 unknown without automatic refetch. Ask to inspect receipts, cancel a review,
 or disable persistence through conversation. Saved data is retained on disable.
 
-Pi Durable 1.0.2 and its SDK dependencies are included and initialize only
+Pi Durable and its SDK dependencies match the tested Pi ${TESTED_PI_HOST_VERSION}
+release. They are included and initialize only
 after opt-in. This feature is specific to the Pi package. DSH keeps its
 per-agent session watchlist and does not run these Durable tasks.
 

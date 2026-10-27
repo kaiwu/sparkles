@@ -310,6 +310,51 @@ describe("Pi Durable personal watchlist role", () => {
   });
 });
 
+// Sleep checkpoints retain the due time across host processes without a read.
+test("a sleeping review survives reopen and executes once when due across Bun and Node", async () => {
+  const path = await directory();
+  const driver = resolve(import.meta.dir, "../../fixtures/durable-watchlist/driver.mjs");
+  const now = 1793059200000;
+  const due = now + 60000;
+  for (const [runtime, mode, clock] of [
+    ["bun", "schedule", now],
+    ["node", "resume-sleeping", due - 10000],
+    ["node", "resume", due + 1],
+  ]) {
+    const child = Bun.spawn([runtime, driver, mode, path, String(clock)], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const timer = setTimeout(() => child.kill(), 5000);
+    let stdout, stderr, code;
+    try {
+      [stdout, stderr, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+    if (code !== 0) throw new Error(`${mode} failed (${code}): ${stderr}\n${stdout}`);
+    expect(stdout).toContain("RESULT:");
+    const job = JSON.parse(stdout.split("RESULT:")[1].trim());
+    if (mode === "resume") {
+      expect(stdout.match(/SOURCE:/g)).toHaveLength(1);
+      expect(job.completedReviews).toBe(1);
+      expect(job.taskState.outcome).toBe("completed");
+      expect(job.latest.facts[0].status).toBe("checked");
+    } else {
+      expect(stdout).not.toContain("SOURCE:");
+      expect(job.completedReviews).toBe(0);
+      expect(job.taskState).toMatchObject({
+        status: "sleeping",
+        nextDueUnixMilliseconds: due,
+      });
+    }
+  }
+}, 20000);
+
 // Real process death: the second source was attempted, while the first source
 // and its receipt were already committed. Recovery must reuse one and mark the
 // other unknown without another source call.

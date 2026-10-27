@@ -276,6 +276,18 @@ const pluginChecks = [
     },
   ),
   pluginCheck(
+    "equibles.screener_and_ownership",
+    "Equibles",
+    "company_profile",
+    "company_profile",
+    { symbol: "AAPL", mic: "XNGS", provider: "equibles" },
+    [
+      request("GET", "api.equibles.com", "/v1/screener/stocks"),
+      request("GET", "api.equibles.com", "/v1/stocks/AAPL/ownership-summary"),
+    ],
+    { requiresEnvironment: "EQUIBLES_API_KEY", requiresExplicitSelection: true },
+  ),
+  pluginCheck(
     "fred.metadata_and_observations",
     "FRED",
     "macro_fred",
@@ -467,18 +479,7 @@ async function main() {
   const startedAt = new Date().toISOString();
   const results = [];
   const checkId = selectedCheckId(process.argv.slice(2));
-  const allChecks = [...pluginChecks, ...directChecks];
-  const requestedCheck = allChecks.find((check) => check.id === checkId);
-  const missingForRequested = missingEnvironment(requestedCheck);
-  if (missingForRequested) {
-    throw new Error(
-      `${requestedCheck.id} requires ${missingForRequested}`,
-    );
-  }
-  const selectedChecks = allChecks
-    .filter((check) => !missingEnvironment(check))
-    .filter((check) => checkId === null || check.id === checkId);
-  invariant(selectedChecks.length > 0, `unknown provider check ${checkId}`);
+  const selectedChecks = selectProviderChecks(checkId, process.env);
   const selectedPlugins = new Set(
     selectedChecks.map((check) => check.plugin).filter(Boolean),
   );
@@ -505,6 +506,25 @@ async function main() {
   if (summary.failed > 0) process.exitCode = 1;
 }
 
+// Selecting a quota-limited check is separate from making its credential
+// available. Keep this pure so the default audit's request plan can be tested.
+export function selectProviderChecks(checkId, environment) {
+  const allChecks = [...pluginChecks, ...directChecks];
+  const requestedCheck = allChecks.find((check) => check.id === checkId);
+  const missingForRequested = missingEnvironment(requestedCheck, environment);
+  if (missingForRequested) {
+    throw new Error(
+      `${requestedCheck.id} requires ${missingForRequested}`,
+    );
+  }
+  const selectedChecks = allChecks
+    .filter((check) => !missingEnvironment(check, environment))
+    .filter((check) => !check.requiresExplicitSelection || check.id === checkId)
+    .filter((check) => checkId === null || check.id === checkId);
+  invariant(selectedChecks.length > 0, `unknown provider check ${checkId}`);
+  return selectedChecks;
+}
+
 function pluginCheck(
   id,
   provider,
@@ -521,6 +541,7 @@ function pluginCheck(
     expectedRequests,
     passStatus: options.passStatus,
     requiresEnvironment: options.requiresEnvironment,
+    requiresExplicitSelection: options.requiresExplicitSelection ?? false,
     async execute() {
       const restore = setEnvironment(options.environment ?? {});
       try {
@@ -777,12 +798,12 @@ function selectedCheckId(arguments_) {
   return arguments_[1];
 }
 
-function missingEnvironment(check) {
+function missingEnvironment(check, environment) {
   if (!check?.requiresEnvironment) return null;
   const names = Array.isArray(check.requiresEnvironment)
     ? check.requiresEnvironment
     : [check.requiresEnvironment];
-  return names.find((name) => !process.env[name]?.trim()) ?? null;
+  return names.find((name) => !environment[name]?.trim()) ?? null;
 }
 
 function countStatuses(results) {
@@ -798,7 +819,7 @@ function countStatuses(results) {
 
 function safeError(error) {
   let message = error instanceof Error ? error.message : String(error);
-  for (const name of ["FRED_API_KEY", "OPENFIGI_API_KEY", "TWELVE_DATA_API_KEY", "ALPACA_API_KEY_ID", "ALPACA_API_SECRET_KEY", "TUSHARE_TOKEN"]) {
+  for (const name of ["FRED_API_KEY", "OPENFIGI_API_KEY", "TWELVE_DATA_API_KEY", "EQUIBLES_API_KEY", "ALPACA_API_KEY_ID", "ALPACA_API_SECRET_KEY", "TUSHARE_TOKEN"]) {
     const value = process.env[name];
     if (value) message = message.replaceAll(value, "<redacted>");
   }

@@ -9,6 +9,12 @@ host effects are adapted. Pi users install the sibling
 [`@pi-sparkles/pi-sparkles`](https://www.npmjs.com/package/@pi-sparkles/pi-sparkles)
 package instead.
 
+The current npm release is **0.1.17**, published independently from Pi 0.1.15.
+It includes explicitly selected Equibles US company snapshots through
+`company_profile` with caller-owned `EQUIBLES_API_KEY`, plus the shared nil-safe
+prompt decoder. The source preserves unconfirmed MIC and share-unit compatibility,
+including ordinary-share versus ADR limitations. It never falls back to Twelve Data.
+
 Requires **DSH 0.2.1-rc.2**, with exact host and service peers, including
 `dsh-working-directory`. Other host versions require a separate compatibility
 review. Session receipts use `snapshotEvents()`, including after resume.

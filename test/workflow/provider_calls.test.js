@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { selectProviderChecks } from "../../scripts/test-live-provider-calls.js";
 
 const root = resolve(import.meta.dir, "../..");
 const inventory = readFileSync(resolve(root, "PROVIDER_CALLS.md"), "utf8");
@@ -15,6 +16,7 @@ const providers = [
   "CNINFO",
   "CSRC",
   "Eastmoney",
+  "Equibles",
   "FRED",
   "HKEX",
   "Alpaca",
@@ -28,16 +30,39 @@ const providers = [
 ];
 
 describe("provider call inventory and live-lane safety", () => {
-  test("enumerates all 48 concrete request operations exactly once", () => {
+  test("enumerates all 50 concrete request operations exactly once", () => {
     const rows = inventory
       .split("\n")
       .filter((line) => providers.some((provider) => line.startsWith(`| ${provider} |`)));
 
-    expect(rows).toHaveLength(48);
-    expect(new Set(rows).size).toBe(48);
+    expect(rows).toHaveLength(50);
+    expect(new Set(rows).size).toBe(50);
     for (const provider of providers) {
       expect(rows.some((row) => row.startsWith(`| ${provider} |`))).toBeTrue();
     }
+  });
+
+  test("an available Equibles key does not opt the default audit into its quota", () => {
+    const environment = { EQUIBLES_API_KEY: "eq_scripted_audit_key" };
+    const defaultIds = selectProviderChecks(null, environment).map((check) => check.id);
+    expect(defaultIds).toEqual(selectProviderChecks(null, {}).map((check) => check.id));
+    expect(defaultIds).not.toContain("equibles.screener_and_ownership");
+    expect(selectProviderChecks("twelve_data.profile_and_statistics", environment)
+      .some((check) => check.provider === "Equibles")).toBeFalse();
+  });
+
+  test("explicit Equibles selection requires its own key and budgets exactly two requests", () => {
+    const id = "equibles.screener_and_ownership";
+    for (const environment of [{}, { EQUIBLES_API_KEY: " " }, { TWELVE_DATA_API_KEY: "demo" }]) {
+      expect(() => selectProviderChecks(id, environment)).toThrow("requires EQUIBLES_API_KEY");
+    }
+    const selected = selectProviderChecks(id, { EQUIBLES_API_KEY: "eq_scripted_audit_key" });
+    expect(selected.map((check) => check.id)).toEqual([id]);
+    expect(selected[0].expectedRequests).toEqual([
+      { method: "GET", host: "api.equibles.com", path: "/v1/screener/stocks" },
+      { method: "GET", host: "api.equibles.com", path: "/v1/stocks/AAPL/ownership-summary" },
+    ]);
+    expect(() => selectProviderChecks("equibles.unknown", {})).toThrow("unknown provider check");
   });
 
   test("keeps credential rejections distinct from decoder conformance", () => {

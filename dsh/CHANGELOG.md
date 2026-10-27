@@ -5,6 +5,18 @@ follow Semantic Versioning. The exact tier, plugin inventory, maturity, and
 content hashes remain authoritative in each tarball's `dsh-lock.json` and
 `release-lock.json`.
 
+## 0.1.17 - 2026-10-27
+
+- Carry the shared event decoder that treats a present nil image list as empty,
+  so a host prompt without attachments does not fail list decoding.
+- Carry the shared `company_profile` shell. `equibles` is an explicit US
+  screener and ownership-summary source, selected with `provider: "equibles"`
+  and read at call time from `EQUIBLES_API_KEY`. It does not confirm the caller
+  MIC, does not cover CN or HK, and does not fall back to Twelve Data. The
+  default provider remains `twelve_data`. Each request is one attempt.
+- Select DSH 0.1.17 from its own published 0.1.16 baseline. The companion Pi
+  release is 0.1.15. The DSH host pin remains 0.2.1-rc.2.
+
 ## 0.1.16 - 2026-10-18
 
 - Size the floating chart stack to 1.5 times its measured status-bar width,

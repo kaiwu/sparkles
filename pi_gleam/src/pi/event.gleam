@@ -891,15 +891,24 @@ fn input_decoder() -> Decoder(Input) {
   use streaming_behavior <- decode.optional_field(
     "streamingBehavior",
     None,
-    decode.map(decode.string, Some),
+    decode.optional(decode.string),
   )
-  use images <- decode.optional_field(
-    "images",
-    [],
-    decode.list(of: decode.dynamic),
-  )
+  use images <- decode.optional_field("images", [], optional_dynamic_list())
   use raw <- decode.then(decode.dynamic)
   decode.success(Input(text:, source:, streaming_behavior:, images:, raw:))
+}
+
+/// Pi sets optional image arrays to JavaScript `undefined` or `null` when a
+/// prompt has no attachments. `optional_field` substitutes its default only
+/// when the key is absent, so a present nil must decode as an empty list.
+fn optional_dynamic_list() -> Decoder(List(Dynamic)) {
+  decode.optional(decode.list(of: decode.dynamic))
+  |> decode.map(fn(value) {
+    case value {
+      Some(items) -> items
+      None -> []
+    }
+  })
 }
 
 fn before_agent_start_decoder() -> Decoder(BeforeAgentStart) {
@@ -921,11 +930,7 @@ fn before_agent_start_decoder() -> Decoder(BeforeAgentStart) {
     }
     _ -> {
       use prompt <- decode.optional_field("prompt", "", decode.string)
-      use images <- decode.optional_field(
-        "images",
-        [],
-        decode.list(of: decode.dynamic),
-      )
+      use images <- decode.optional_field("images", [], optional_dynamic_list())
       decode.success(BeforeAgentStartUser(
         prompt:,
         images:,

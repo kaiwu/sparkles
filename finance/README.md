@@ -18,6 +18,7 @@ finance_core ─┬─> finance_provenance
               │                 ├─> finance_sec
               │                 ├─> finance_fred
               │                 ├─> finance_twelve_data
+              │                 ├─> finance_equibles
               │                 ├─> finance_capco
               │                 ├─> finance_eastmoney
               │                 ├─> finance_market_alpaca
@@ -76,7 +77,7 @@ The authority contract validates track-scoped source ownership, official links,
 operational access, redistribution, and limitations without embedding any
 market's registry in the shared package.
 `finance_testkit` depends on core and HTTP. `finance_openfigi`, `finance_sec`,
-`finance_fred`, `finance_twelve_data`, `finance_capco`, `finance_eastmoney`, and
+`finance_fred`, `finance_twelve_data`, `finance_equibles`, `finance_capco`, `finance_eastmoney`, and
 `finance_market_alpaca` remain reusable outside Pi and share the HTTP policies
 rather than implementing plugin-local fetch stacks. Eastmoney's public-web
 adapter is local-analysis-only with unknown latency, service level, and
@@ -226,6 +227,10 @@ release-calendar, forecast, interpretation, or Pi layer.
 symbol/MIC query, sends the same scope to both profile and statistics endpoints,
 preserves exact count lexemes and nulls, serializes the two credit-bearing
 requests, and performs no retry, MIC relabelling, fallback, or profile judgment.
+`finance_equibles` is a separate US listing snapshot adapter. It validates an
+`eq_`-prefixed bearer key, requests one screener row and a matching
+ownership summary, and preserves exact count lexemes. The caller MIC stays
+unconfirmed, and the decoded snapshot stays in Equibles types.
 `finance_capco` fixes one reviewed public CAPCO result page and its 2025-H2 PDF,
 requires the exact response length and SHA-256 before bounded PDF.js extraction,
 and parses only the requested six-digit stock-code row. It keeps the guideline

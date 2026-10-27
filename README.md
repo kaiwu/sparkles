@@ -15,7 +15,7 @@ mutate a paper or live order.
 | Host | npm package | Host-native output | Release state |
 | --- | --- | --- | --- |
 | Pi | [`@pi-sparkles/pi-sparkles`](https://www.npmjs.com/package/@pi-sparkles/pi-sparkles) | terminal components, including responsive colored Unicode OHLCV charts | Published · ProductUseful T1–T6 |
-| DSH | [`@dsh-sparkles/dsh-sparkles`](https://www.npmjs.com/package/@dsh-sparkles/dsh-sparkles) | browser slots, session projections, and floating SVG OHLCV charts | Published 0.1.16 · ProductUseful T1–T6 |
+| DSH | [`@dsh-sparkles/dsh-sparkles`](https://www.npmjs.com/package/@dsh-sparkles/dsh-sparkles) | browser slots, session projections, and floating SVG OHLCV charts | Published 0.1.17 · ProductUseful T1–T6 |
 
 ## Install and start
 
@@ -23,7 +23,7 @@ Pi:
 
 ```sh
 npm install --global @earendil-works/pi-coding-agent@1.4.0
-pi install npm:@pi-sparkles/pi-sparkles@0.1.14
+pi install npm:@pi-sparkles/pi-sparkles@0.1.15
 export AGENT_CONTACT="ops@example.com"
 pi --finance-track cn
 ```
@@ -46,7 +46,7 @@ provider fetch. A missing adapter is allowed and never triggers fallback.
 | Tiers | T1–T6 ProductUseful in independent Pi and DSH lanes · 0 open Pi blockers · [tiers.json](tiers.json) |
 | Inventory | 135 ledger plugins · 142 Gleam plugin packages · 77 finance libraries |
 | Tracks | closed `cn` / `hk` / `us` |
-| Pi release | `@pi-sparkles/pi-sparkles@0.1.14` · tested with Pi `1.4.0` |
+| Pi release | `@pi-sparkles/pi-sparkles@0.1.15` · tested with Pi `1.4.0` |
 | Tested with | Pi `1.4.0` · DSH `0.2.1-rc.2` · Gleam `1.18.0` · Bun `1.3.14` |
 
 The seven packages excluded from the aggregate (`hello`, `lifecycle`,
@@ -84,7 +84,9 @@ See [watchlist](plugins/watchlist/README.md) for controls and limits.
 Try: “My picks are CN 600519 and CN 600000.” If Pi offers to remember them,
 reply “Yes, remember these picks across chats.” In another chat, ask to show
 the saved watchlist or review it once using Eastmoney A-share quotes. Pi Durable
-1.0.2 is bundled lazily; DSH retains its per-agent session watchlist.
+follows Pi's release version: this checkout bundles Durable, Chord and Pi AI
+1.4.0 to match the tested Pi 1.4.0 host. They initialize after opt-in; DSH uses
+its native per-session watchlist storage and review runner.
 
 ## Docs
 
@@ -156,8 +158,16 @@ not load `.env` files. Restart the selected host after changes.
 | `TUSHARE_TOKEN` | credential | CN symbol discovery and Tushare-backed event tools |
 | `ALPACA_API_KEY_ID`, `ALPACA_API_SECRET_KEY` | credential / secret | US quote, OHLCV, universe, corporate actions, news |
 | `OPENFIGI_API_KEY` | optional secret | `finance_symbols` (anonymous access otherwise) |
-| `TWELVE_DATA_API_KEY` | credential | `company_profile` |
+| `TWELVE_DATA_API_KEY` | credential | `company_profile` provider `twelve_data` |
+| `EQUIBLES_API_KEY` | credential | `company_profile` provider `equibles` |
 | `FRED_API_KEY` | credential | `macro_fred` |
+
+`company_profile` has two explicit US sources. The default, `twelve_data`,
+reads Twelve Data `/profile` and `/statistics` with `TWELVE_DATA_API_KEY`.
+`equibles` reads one Equibles screener row and ownership summary with
+`EQUIBLES_API_KEY`. Pass `provider: "equibles"` to select it. Each key belongs
+only to its source. Equibles does not confirm the caller MIC, and this tool
+does not cover CN or HK listings.
 
 `AGENT_CONTACT` identifies the caller and grants no provider or market
 authority. A known exact CN code can use Eastmoney history without Tushare.
@@ -172,6 +182,7 @@ export OPENFIGI_API_KEY="<secret-manager:openfigi>"        # optional
 export ALPACA_API_KEY_ID="<secret-manager:alpaca-key-id>"
 export ALPACA_API_SECRET_KEY="<secret-manager:alpaca-secret>"
 export TWELVE_DATA_API_KEY="<secret-manager:twelve-data>"
+export EQUIBLES_API_KEY="<secret-manager:equibles>"          # optional
 export FRED_API_KEY="<secret-manager:fred>"
 # Pi
 pi --finance-track cn

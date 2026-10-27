@@ -5,6 +5,22 @@ here. Versions follow Semantic Versioning. The exact selected tier, plugin
 inventory, maturity, and content hashes remain authoritative in each tarball's
 `release-lock.json` and `aggregate-lock.json`.
 
+## 0.1.15 - 2026-10-27
+
+- Align bundled Pi Durable, Chord and Pi AI with the tested Pi 1.4.0 release,
+  and reject mismatched SDK pins during builds. Use Durable's persisted sleep
+  API for scheduled watchlist reviews and an explicit document checkpoint policy.
+- Decode a Pi 1.4.0 prompt when `images` is `undefined` or `null`. A present
+  nil is an empty list, so `before_agent_start` no longer fails with expected
+  List found Nil. Optional input `streamingBehavior` uses the same nil-safe
+  optional decoder.
+- Add Equibles as an explicit `company_profile` source. The default remains
+  `twelve_data`. Pass `provider: "equibles"` with caller-owned
+  `EQUIBLES_API_KEY` to read one US screener row and its ownership summary.
+  Equibles does not confirm the caller MIC, does not cover CN or HK on this
+  tool, and never falls back to or from Twelve Data. Each request is one
+  attempt.
+
 ## 0.1.14 - 2026-10-23
 
 - Decode Pi 1.4.0 `before_agent_start` as a user or custom run and keep finance

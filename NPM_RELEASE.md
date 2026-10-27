@@ -55,10 +55,23 @@ release verification load the T6 all-in-one aggregate entrypoint once so all
 The loader rejects earlier-tier and per-plugin target overrides.
 
 The T5 selection remains the historical 0.1.4 boundary. T6 is ProductUseful
-with zero omissions, partials, or blockers. Published Pi 0.1.14 is the next canonical patch after published baseline
-0.1.13. It is tested with Pi 1.4.0; bundled Pi Durable remains 1.0.2. Install
-`@pi-sparkles/pi-sparkles@0.1.14` on `@earendil-works/pi-coding-agent@1.4.0`.
-Registry `latest` resolves to 0.1.14.
+with zero omissions, partials, or blockers. Published Pi 0.1.15 is the next
+canonical patch after published baseline 0.1.14. It is tested with Pi 1.4.0,
+with Durable, Chord and Pi AI pinned to that same release. Install
+`@pi-sparkles/pi-sparkles@0.1.15` on `@earendil-works/pi-coding-agent@1.4.0`.
+Registry `latest` resolves to 0.1.15. DSH is independently published at 0.1.17.
+
+The 2026-10-27 Pi publication uses the verified T6 tarball:
+
+```text
+dist/npm/t6/pi-sparkles-pi-sparkles-0.1.15.tgz
+sha256: 50905735c4099262c9829a5d6c8139262f4e6537f32e719d44d1e6a368f360b0
+```
+
+Release gates, final preflight, the manual-review comparison, publication response,
+registry metadata and downloaded-tarball integrity are retained under
+`.work/releases/pi/0.1.15/`. The rebuild changes generated adapter/debug identifiers
+and their content hashes; executable code matches the locally reviewed candidate.
 
 ## Local consumer verification
 
@@ -71,7 +84,7 @@ register the entrypoint through an offline, sessionless RPC request. Both
 startup processes have a 15-second hard limit. For a manual equivalent:
 
 ```sh
-npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.14.tgz
+npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.15.tgz
 printf '%s\n' '{"id":"startup","type":"get_state"}' | pi --no-extensions \
   --extension ./node_modules/@pi-sparkles/pi-sparkles/index.js \
   --mode rpc --no-session --offline
@@ -82,8 +95,10 @@ at runtime, and pins `@napi-rs/canvas@1.0.3` because Pi runs on Bun and later
 floating native canvas builds can block extension import. Neither dependency is
 initialized until a PDF operation invokes the parser. Pi's coding-agent and
 TUI remain host-owned and are declared with the Pi-required `"*"` peer ranges.
-The exact Pi Durable, Chord and Pi AI 1.0.2 SDK dependencies are bundled lazily
-for the Pi-only watchlist and initialize after conversational opt-in. Saving
+The current Pi release pins Pi Durable, Chord and Pi AI to the same Pi 1.4.0
+release as the tested host; these are not independently versioned releases.
+The build rejects SDK pins that differ from the tested Pi version. They are
+bundled lazily for the Pi-only watchlist and initialize after conversational opt-in. Saving
 picks does not enable polling. The clean-install smoke uses an isolated home
 and agent directory so it cannot open a consumer's accepted watchlist store.
 The manifest
@@ -278,7 +293,27 @@ receipt consumption/isolation/resume and authenticated web client assets, runs
 `npm publish --dry-run`, and checks version availability. Other host versions
 require a separate compatibility review.
 See [the contract gap analysis](dsh/README.md#contract-review--2026-10-18).
-DSH `0.1.16` is published as `latest`, selected from its own freshly observed
+DSH `0.1.17` is published as `latest`, selected from its own published `0.1.16`
+baseline. Pi remains independently published at `0.1.15`. The DSH package adds
+the shared Equibles US company snapshot and nil-safe prompt decoder, and keeps
+the exact DSH `0.2.1-rc.2` host and service peers.
+
+```text
+dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.17.tgz
+sha256: aaa60d1609cb08468d2f43547fe84dce54e938b693c0d7fd0cdfab00911ecd9e
+```
+
+The release gate passed 74 focused tests, clean-prefix/profile installation,
+real tool execution, session isolation and resume, durable-review crash recovery,
+and authenticated browser asset discovery. Scripted Equibles calls also passed
+through the real DSH tool runtime. The browser client is byte-for-byte identical
+to the previously reviewed 0.1.16 client; no new visual QA is claimed.
+Final preflight, publication, registry artifact integrity and client comparison
+evidence are retained under `.work/releases/dsh/0.1.17/`.
+
+### Previous DSH 0.1.16 release
+
+DSH `0.1.16` was published as `latest`, selected from its own freshly observed
 published `0.1.15` baseline. The reviewed local `0.1.15` candidate was already a
 published version, so the next canonical patch is `0.1.16`. Pi remains `0.1.13`.
 The exact package requires DSH `0.2.1-rc.2` and its pinned service peers.

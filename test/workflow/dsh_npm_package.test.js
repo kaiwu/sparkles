@@ -232,10 +232,10 @@ describe("dsh-sparkles npm packaging", () => {
     expect(t6.omittedProposals).toEqual([]);
     expect(t6.partialImplementations).toEqual([]);
     expect(t6.openBlockers).toEqual([]);
-    expect(t6.packageVersion).toBe("0.1.16");
+    expect(t6.packageVersion).toBe("0.1.17");
     expect(t6.maturity).toBe("product_useful_dsh_aggregate");
     expect(t6.dshRelease).toMatchObject({
-      version: "0.1.16",
+      version: "0.1.17",
       status: "product_useful",
       target: "T6",
     });

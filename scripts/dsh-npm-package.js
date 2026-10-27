@@ -267,7 +267,8 @@ you do not need every variable below.
 | \`TUSHARE_TOKEN\` | Optional, rate- and entitlement-limited mainland China stock-identity fallback. It is never required or the first route. Tushare permissions and points apply. |
 | \`ALPACA_API_KEY_ID\`, \`ALPACA_API_SECRET_KEY\` | Optional Alpaca US prices, bars, news, corporate actions, and assets. Feed permissions apply. |
 | \`OPENFIGI_API_KEY\` | Optional OpenFIGI identity mapping. |
-| \`TWELVE_DATA_API_KEY\` | Optional Twelve Data company profiles. |
+| \`TWELVE_DATA_API_KEY\` | Optional Twelve Data company profiles. Pass provider \`twelve_data\` or omit it. |
+| \`EQUIBLES_API_KEY\` | Optional Equibles US company snapshots. Pass provider \`equibles\`. This is not a Twelve Data fallback. |
 | \`FRED_API_KEY\` | Optional FRED macroeconomic series. |
 
 Example:

@@ -122,6 +122,48 @@ function toolRunContext(agent = fakeAgent(), callId = "call-1") {
 }
 
 describe("pi-api facade", () => {
+  test("Equibles preserves ADR unit caveats and rejects forged numeric tokens in DSH", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalKey = process.env.EQUIBLES_API_KEY;
+    process.env.EQUIBLES_API_KEY = "eq_dsh_scripted_key";
+    const reason = "Foreign private issuer: count is in ordinary shares, not ADRs.";
+    let forged = false;
+    const paths = [];
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      expect(url.origin).toBe("https://api.equibles.com");
+      paths.push(url.pathname);
+      return new Response(JSON.stringify(url.pathname === "/v1/screener/stocks"
+        ? { data: [{ ticker: "TSM", name: "Fixture issuer", market: "US", currency: "USD" }] }
+        : { ticker: "TSM", exactListing: false, sharesOutstanding: forged ? { __finance_equibles_number__: "1000" } : 1000, percentUnavailableReason: reason }));
+    };
+    try {
+      const ctx = fakeCtx();
+      const artifact = resolve(import.meta.dir, "../../dist/company_profile/index.js");
+      const extension = await import(`${artifact}?dsh-equibles=${Date.now()}`);
+      await extension.default(createPiApi({ ctx, appendPluginRecord: fakeAppendPluginRecord }));
+      const input = { symbol: "TSM", mic: "XNYS", provider: "equibles" };
+      const owner = fakeAgent("equibles-owner");
+      const tool = ctx.__tools.find((tool) => tool.name === "company_profile");
+      const value = await tool.execute(input, toolRunContext(owner, "equibles-valid"));
+      expect(value.details.track).toBe("us");
+      expect(value.details.shares.value.percentUnavailableReason).toBe(reason);
+      expect(value.details.scope.sharesListingUnitCompatibility).toBe("not_established");
+      expect(value.content[0].text).toContain(reason);
+      forged = true;
+      await expect(tool.execute(input, toolRunContext(owner, "equibles-forged")))
+        .rejects.toThrow("invalid ownership-summary response");
+      expect(paths).toEqual([
+        "/v1/screener/stocks", "/v1/stocks/TSM/ownership-summary",
+        "/v1/screener/stocks", "/v1/stocks/TSM/ownership-summary",
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalKey === undefined) delete process.env.EQUIBLES_API_KEY;
+      else process.env.EQUIBLES_API_KEY = originalKey;
+    }
+  }, 10_000);
+
   test("registerTool bridges parameters and output through the DSH contract", async () => {
     const ctx = fakeCtx();
     const api = createPiApi({ appendPluginRecord: fakeAppendPluginRecord, ctx });

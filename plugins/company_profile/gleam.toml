@@ -1,7 +1,7 @@
 name = "pi_sparkles_company_profile"
 version = "0.1.0"
 target = "javascript"
-description = "Exact Twelve Data US company profile snapshots for Pi"
+description = "Exact US company snapshots from Twelve Data or Equibles for Pi"
 
 licences = ["Apache-2.0"]
 gleam = ">= 1.18.0"
@@ -11,6 +11,7 @@ gleam_stdlib = ">= 0.69.0 and < 2.0.0"
 gleam_javascript = ">= 1.0.0 and < 2.0.0"
 gleam_json = ">= 3.1.0 and < 4.0.0"
 finance_core = { path = "../../finance/finance_core" }
+finance_equibles = { path = "../../finance/finance_equibles" }
 finance_http = { path = "../../finance/finance_http" }
 finance_provenance = { path = "../../finance/finance_provenance" }
 finance_track = { path = "../../finance/finance_track" }
@@ -27,6 +28,6 @@ runtime = "bun"
 tested_version = "0.83.0"
 
 [metadata.finance]
-provider = "Twelve Data"
+provider = "Twelve Data or Equibles"
 access = "read-only"
 track = "us"

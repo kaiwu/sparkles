@@ -534,7 +534,7 @@ Uninstall with \`dsh plugin --profile <name> remove @dsh-sparkles/dsh-sparkles\`
 Set the same caller-owned environment variables the Pi distribution uses
 (see CONFIGURATION.md): \`AGENT_CONTACT\` is required by every adapter;
 \`TUSHARE_TOKEN\`, \`ALPACA_API_KEY_ID\`, \`ALPACA_API_SECRET_KEY\`,
-\`OPENFIGI_API_KEY\`, \`TWELVE_DATA_API_KEY\`, and \`FRED_API_KEY\` are optional
+\`OPENFIGI_API_KEY\`, \`TWELVE_DATA_API_KEY\`, \`EQUIBLES_API_KEY\`, and \`FRED_API_KEY\` are optional
 credentials. Then ask the agent for evidence, e.g. "get a current quote for
 AAPL" or "compare SMA/RSI/ATR for 600519.SH".
 

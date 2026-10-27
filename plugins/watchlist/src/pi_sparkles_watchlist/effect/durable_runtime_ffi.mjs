@@ -178,6 +178,7 @@ export function new_runtime(
           scope: "conversation",
           history: "latest",
           fork: "initial",
+          checkpointWhen: () => false,
           initial: () => ({
             revision: 0,
             saved: null,
@@ -264,7 +265,13 @@ export function new_runtime(
           }),
           phases: {
             due: async (task, runtime, taskContext) => {
-              await runtime.sleep(task.state.checkpoint.due, taskContext);
+              await runtime.sleepUntil(
+                task.state.checkpoint.due,
+                { ...task.state.checkpoint, phase: "start" },
+                taskContext,
+              );
+            },
+            start: async (task, runtime, taskContext) => {
               const cycle = admitted(
                 cyclePlan(encode(task.input), runtime.now()),
               );

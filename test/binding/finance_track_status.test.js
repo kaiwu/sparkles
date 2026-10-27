@@ -350,6 +350,39 @@ describe("finance track status binding", () => {
     }
   });
 
+  test("accepts a user before_agent_start when Pi sets images to nil", async () => {
+    const instance = await harness();
+    const handler = instance.handlers.get("before_agent_start");
+    const ctx = { getSystemPrompt: () => "base prompt" };
+    const image = { type: "image", data: "abc", mimeType: "image/png" };
+
+    for (const images of [undefined, null, [], [image]]) {
+      const result = await handler(
+        {
+          type: "before_agent_start",
+          messageType: "user",
+          prompt: "hello",
+          images,
+          systemPrompt: "base prompt",
+        },
+        ctx,
+      );
+      expect(result.systemPrompt).toContain("base prompt");
+    }
+
+    await expect(
+      handler(
+        {
+          type: "before_agent_start",
+          messageType: "user",
+          prompt: "hello",
+          images: "not-a-list",
+        },
+        ctx,
+      ),
+    ).rejects.toThrow(/Could not decode Pi event:.*images/);
+  });
+
   test("renders and switches all three isolated track profiles", async () => {
     const instance = await harness();
     const statuses = [];
