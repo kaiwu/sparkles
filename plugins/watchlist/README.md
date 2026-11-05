@@ -102,11 +102,12 @@ selected store when its lifetime budgets are exhausted. Branch collection
 limits remain 20 lists, 200 members per list, 1,000 members total, 20 tags per
 member, and 10,000 mutations per branch.
 
-The Pi sibling lazily bundles Pi Durable, Chord and Pi AI from the same 1.4.0
+The Pi sibling lazily bundles Pi Durable, Chord and Pi AI from the same 1.5.0
 release as the tested Pi host, using exact build pins because compiled Pi does
 not resolve arbitrary external SDK packages. SDK initialization still waits for
-opt-in. Installed Pi 1.4.0
-is tested. The adapter uses JSONL storage with fsync and an OS-released
+opt-in. Installed Pi 1.5.0 is tested. The store adapter calls Durable's
+group `commit(batches, receive, context)` and keeps the byte budget and private
+file modes. The adapter uses JSONL storage with fsync and an OS-released
 SQLite exclusive writer lease. Node 22.19+ or Bun is required. Only one Pi
 process can own a directory; competing writers fail explicitly. Local private
 files contain user-owned picks and receipts. Storage is never a distribution

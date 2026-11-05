@@ -22,8 +22,8 @@ mutate a paper or live order.
 Pi:
 
 ```sh
-npm install --global @earendil-works/pi-coding-agent@1.4.0
-pi install npm:@pi-sparkles/pi-sparkles@0.1.15
+npm install --global @earendil-works/pi-coding-agent@1.5.0
+pi install npm:@pi-sparkles/pi-sparkles@0.1.16
 export AGENT_CONTACT="ops@example.com"
 pi --finance-track cn
 ```
@@ -46,8 +46,8 @@ provider fetch. A missing adapter is allowed and never triggers fallback.
 | Tiers | T1–T6 ProductUseful in independent Pi and DSH lanes · 0 open Pi blockers · [tiers.json](tiers.json) |
 | Inventory | 135 ledger plugins · 142 Gleam plugin packages · 77 finance libraries |
 | Tracks | closed `cn` / `hk` / `us` |
-| Pi release | `@pi-sparkles/pi-sparkles@0.1.15` · tested with Pi `1.4.0` |
-| Tested with | Pi `1.4.0` · DSH `0.2.1-rc.2` · Gleam `1.18.0` · Bun `1.3.14` |
+| Pi release | `@pi-sparkles/pi-sparkles@0.1.16` · tested with Pi `1.5.0` |
+| Tested with | Pi `1.5.0` · DSH `0.2.1-rc.2` · Gleam `1.18.0` · Bun `1.3.14` |
 
 The seven packages excluded from the aggregate (`hello`, `lifecycle`,
 `safety_gate`, `cn_setup`, `hk_setup`, `cn_fundamentals`, `hk_fundamentals`)
@@ -85,7 +85,7 @@ Try: “My picks are CN 600519 and CN 600000.” If Pi offers to remember them,
 reply “Yes, remember these picks across chats.” In another chat, ask to show
 the saved watchlist or review it once using Eastmoney A-share quotes. Pi Durable
 follows Pi's release version: this checkout bundles Durable, Chord and Pi AI
-1.4.0 to match the tested Pi 1.4.0 host. They initialize after opt-in; DSH uses
+1.5.0 to match the tested Pi 1.5.0 host. They initialize after opt-in; DSH uses
 its native per-session watchlist storage and review runner.
 
 ## Docs

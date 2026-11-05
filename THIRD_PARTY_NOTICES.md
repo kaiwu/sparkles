@@ -11,7 +11,7 @@ third-party software. These notices do not change the licence of Pi Sparkles.
 | Gleam JSON | 3.1.0 | Apache-2.0 | https://github.com/gleam-lang/json |
 | Gleam JavaScript | 1.0.1 | Apache-2.0 | https://github.com/gleam-lang/javascript |
 | Zod | 4.4.3 | MIT | https://github.com/colinhacks/zod |
-| Pi Durable, Chord, Pi AI | 1.0.2 | MIT | https://github.com/earendil-works/pi |
+| Pi Durable, Chord, Pi AI, Pi Schema | 1.5.0 | MIT | https://github.com/earendil-works/pi |
 | TypeBox | 1.3.27 | MIT | https://github.com/sinclairzx81/typebox |
 
 The complete Apache License, Version 2.0 is distributed in `LICENSE`.
@@ -67,8 +67,10 @@ SOFTWARE.
 ## Optional Pi Durable runtime
 
 `@earendil-works/pi-durable`, `@earendil-works/chord`, and
-`@earendil-works/pi-ai` are pinned to 1.0.2 and bundled as lazy initializers
+`@earendil-works/pi-ai` are pinned to 1.5.0 and bundled as lazy initializers
 inside the optional Pi watchlist artifact for compatibility with compiled Pi.
+That bundle uses Pi Schema for tool and document checks. TypeBox remains a
+host peer for the plain Pi package.
 They initialize after user opt-in. The included dependency licences follow
 below. DSH does not include this Pi Durable runtime.
 

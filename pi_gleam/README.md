@@ -7,7 +7,7 @@ JavaScript FFI modules adapt Pi's objects, callbacks, promises, optional values,
 and plain result objects.
 
 The package is under initial development, is not published to Hex yet, and is
-tested against Pi `1.4.0`. The name is provisional until its Hex availability
+tested against Pi `1.5.0`. The name is provisional until its Hex availability
 is confirmed.
 
 ## Minimal extension
@@ -82,7 +82,7 @@ the JavaScript promise and are reported by Pi as tool failures.
 | --- | --- |
 | `pi` | opaque runtime types; commands; shortcuts; Boolean/string flags; user/custom messages; session name and labels; active tools; raw tool/command discovery; thinking/model/provider methods; event bus; `exec` |
 | `pi/context` | mode, cwd, UI access, trust/idle/abort/pending state, shutdown/compact, prompt/context usage, scoped models, wait/new/fork/tree/switch/reload command operations |
-| `pi/event` | constants for Pi 1.4.0 events including `before_agent_start` user/custom runs, `agent_before_settle`, `session_compact_failed`, and `context_with_system`; generic and decoder-backed observe/respond registration; typed lifecycle, tool call, input, turn start, provider response, and tool-execution-start helpers; lifecycle/tool/input result builders |
+| `pi/event` | constants for Pi 1.5.0 events including `before_agent_start` user/custom runs, `agent_before_settle`, `session_compact_failed`, and `context_with_system`; generic and decoder-backed observe/respond registration; typed lifecycle, tool call, input, turn start, provider response, and tool-execution-start helpers; lifecycle/tool/input result builders |
 | `pi/event_bus` | extension-to-extension emit, subscribe, and unsubscribe |
 | `pi/session` | read-only session metadata; all, branch, and compacted-context entries; decoder-backed extension custom-state restoration |
 | `pi/schema` | primitive, object, record, tuple, array, union, nullable, enum, constraint, metadata, and raw JSON schemas |

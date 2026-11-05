@@ -464,14 +464,17 @@ export function new_runtime(
           fsync: true,
         });
         const write = storage.commit.bind(storage);
-        storage.commit = async (writes, writeContext) => {
+        // Durable 1.5.0 stores one call as a group. The budget check runs
+        // before any batch is appended, and the original receive callback
+        // still reports each stored sequence.
+        storage.commit = async (batches, receive, context) => {
           const current = await checkDirectory(path);
           if (
-            current + Buffer.byteLength(encode(writes)) * 4 + 16384 >
+            current + Buffer.byteLength(encode(batches)) * 4 + 16384 >
             MAXIMUM_STORE_BYTES
           )
             throw new Error("watchlist_store_byte_budget_exceeded");
-          await write(writes, writeContext);
+          const result = await write(batches, receive, context);
           for (const file of await readdir(path)) {
             try {
               await chmod(join(path, file), 0o600);
@@ -479,6 +482,7 @@ export function new_runtime(
               if (error.code !== "ENOENT") throw error;
             }
           }
+          return result;
         };
         harness = await Harness.open(
           storage,

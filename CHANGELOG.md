@@ -5,6 +5,14 @@ here. Versions follow Semantic Versioning. The exact selected tier, plugin
 inventory, maturity, and content hashes remain authoritative in each tarball's
 `release-lock.json` and `aggregate-lock.json`.
 
+## 0.1.16 - 2026-11-05
+
+- Test the package with Pi 1.5.0. Bundle Pi Durable, Chord, and Pi AI at 1.5.0,
+  and keep those pins equal to the tested host. The watchlist store uses
+  Durable's group commit, `commit(batches, receive, context)`, and still checks
+  the byte budget before any batch is stored. Existing JSONL stores remain
+  format version 1. DSH's package and watchlist runner are unchanged.
+
 ## 0.1.15 - 2026-10-27
 
 - Align bundled Pi Durable, Chord and Pi AI with the tested Pi 1.4.0 release,

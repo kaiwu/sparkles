@@ -55,11 +55,16 @@ release verification load the T6 all-in-one aggregate entrypoint once so all
 The loader rejects earlier-tier and per-plugin target overrides.
 
 The T5 selection remains the historical 0.1.4 boundary. T6 is ProductUseful
-with zero omissions, partials, or blockers. Published Pi 0.1.15 is the next
-canonical patch after published baseline 0.1.14. It is tested with Pi 1.4.0,
-with Durable, Chord and Pi AI pinned to that same release. Install
-`@pi-sparkles/pi-sparkles@0.1.15` on `@earendil-works/pi-coding-agent@1.4.0`.
-Registry `latest` resolves to 0.1.15. DSH is independently published at 0.1.17.
+with zero omissions, partials, or blockers. Published Pi 0.1.15 is the patch
+after published baseline 0.1.14. It is tested with Pi 1.4.0, with Durable,
+Chord and Pi AI pinned to that same release. Registry `latest` still resolves
+to 0.1.15. DSH is independently published at 0.1.17.
+
+The local candidate is 0.1.16, the next patch after published 0.1.15. It is
+tested with Pi 1.5.0, and Durable, Chord and Pi AI are pinned to that same
+release. It is not published. Install
+`@pi-sparkles/pi-sparkles@0.1.16` on `@earendil-works/pi-coding-agent@1.5.0`
+after that publication.
 
 The 2026-10-27 Pi publication uses the verified T6 tarball:
 
@@ -95,7 +100,7 @@ at runtime, and pins `@napi-rs/canvas@1.0.3` because Pi runs on Bun and later
 floating native canvas builds can block extension import. Neither dependency is
 initialized until a PDF operation invokes the parser. Pi's coding-agent and
 TUI remain host-owned and are declared with the Pi-required `"*"` peer ranges.
-The current Pi release pins Pi Durable, Chord and Pi AI to the same Pi 1.4.0
+The current Pi candidate pins Pi Durable, Chord and Pi AI to the same Pi 1.5.0
 release as the tested host; these are not independently versioned releases.
 The build rejects SDK pins that differ from the tested Pi version. They are
 bundled lazily for the Pi-only watchlist and initialize after conversational opt-in. Saving

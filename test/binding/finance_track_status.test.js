@@ -313,7 +313,7 @@ describe("finance track status binding", () => {
     );
   });
 
-  test("injects routing policy for Pi 1.4.0 user and custom before_agent_start runs", async () => {
+  test("injects routing policy for user and custom before_agent_start runs", async () => {
     const instance = await harness();
     const handler = instance.handlers.get("before_agent_start");
     const ctx = { getSystemPrompt: () => "base prompt" };
