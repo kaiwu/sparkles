@@ -55,16 +55,25 @@ release verification load the T6 all-in-one aggregate entrypoint once so all
 The loader rejects earlier-tier and per-plugin target overrides.
 
 The T5 selection remains the historical 0.1.4 boundary. T6 is ProductUseful
-with zero omissions, partials, or blockers. Published Pi 0.1.15 is the patch
-after published baseline 0.1.14. It is tested with Pi 1.4.0, with Durable,
-Chord and Pi AI pinned to that same release. Registry `latest` still resolves
-to 0.1.15. DSH is independently published at 0.1.17.
+with zero omissions, partials, or blockers. Published Pi 0.1.16 is the patch
+after published baseline 0.1.15. It is tested with Pi 1.5.0, with Durable,
+Chord and Pi AI pinned to that same release. Registry `latest` resolves to
+0.1.16. DSH is independently published at 0.1.17.
 
-The local candidate is 0.1.16, the next patch after published 0.1.15. It is
-tested with Pi 1.5.0, and Durable, Chord and Pi AI are pinned to that same
-release. It is not published. Install
-`@pi-sparkles/pi-sparkles@0.1.16` on `@earendil-works/pi-coding-agent@1.5.0`
-after that publication.
+Install `@pi-sparkles/pi-sparkles@0.1.16` on
+`@earendil-works/pi-coding-agent@1.5.0`.
+
+The 2026-11-05 Pi publication uses the verified T6 tarball:
+
+```text
+dist/npm/t6/pi-sparkles-pi-sparkles-0.1.16.tgz
+sha256: 07b319f053337f2a8cc53ab2d4f2df9c0dab2950c71470cf6906f968ae6fbb04
+```
+
+Release gates, final preflight, publication response, registry metadata and
+downloaded-tarball integrity are retained under `.work/releases/pi/0.1.16/`.
+The downloaded registry artifact matches that sha256. DSH `latest` stayed
+`0.1.17`.
 
 The 2026-10-27 Pi publication uses the verified T6 tarball:
 
@@ -89,7 +98,7 @@ register the entrypoint through an offline, sessionless RPC request. Both
 startup processes have a 15-second hard limit. For a manual equivalent:
 
 ```sh
-npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.15.tgz
+npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.16.tgz
 printf '%s\n' '{"id":"startup","type":"get_state"}' | pi --no-extensions \
   --extension ./node_modules/@pi-sparkles/pi-sparkles/index.js \
   --mode rpc --no-session --offline
@@ -100,7 +109,7 @@ at runtime, and pins `@napi-rs/canvas@1.0.3` because Pi runs on Bun and later
 floating native canvas builds can block extension import. Neither dependency is
 initialized until a PDF operation invokes the parser. Pi's coding-agent and
 TUI remain host-owned and are declared with the Pi-required `"*"` peer ranges.
-The current Pi candidate pins Pi Durable, Chord and Pi AI to the same Pi 1.5.0
+The current Pi release pins Pi Durable, Chord and Pi AI to the same Pi 1.5.0
 release as the tested host; these are not independently versioned releases.
 The build rejects SDK pins that differ from the tested Pi version. They are
 bundled lazily for the Pi-only watchlist and initialize after conversational opt-in. Saving

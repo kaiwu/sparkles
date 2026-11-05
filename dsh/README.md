@@ -9,7 +9,7 @@ host effects are adapted. Pi users install the sibling
 [`@pi-sparkles/pi-sparkles`](https://www.npmjs.com/package/@pi-sparkles/pi-sparkles)
 package instead.
 
-The current npm release is **0.1.17**, published independently from Pi 0.1.15.
+The current npm release is **0.1.17**, published independently from Pi 0.1.16.
 It includes explicitly selected Equibles US company snapshots through
 `company_profile` with caller-owned `EQUIBLES_API_KEY`, plus the shared nil-safe
 prompt decoder. The source preserves unconfirmed MIC and share-unit compatibility,
