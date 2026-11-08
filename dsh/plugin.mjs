@@ -244,7 +244,7 @@ export function createPlugin(
         await ctx.plugin(extension, extensionConfig);
       }
       const scopedApis = new Map();
-      // DSH 0.2.1-rc.2 keeps the serial lifecycle: there is no
+      // DSH 0.2.2-rc.1 keeps the serial lifecycle: there is no
       // `agent/session-start`. Serial `agent/created` carries `source`
       // (`startup` | `resume` | `clear` | `compact`) and is the
       // publication/startup boundary: compose scoped shells first so a

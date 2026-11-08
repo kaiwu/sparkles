@@ -41,7 +41,7 @@ import {
 } from "./aggregate-bundle.js";
 import { DIST_DIR, ROOT, WORK_DIR, plugins } from "./modules.js";
 import { readTierManifest } from "./tiers.js";
-import { DSH_NODE_ENGINE, DSH_RUNTIME_PEERS } from "../dsh/runtime-contract.mjs";
+import { DSH_ENGINES, DSH_RUNTIME_PEERS } from "../dsh/runtime-contract.mjs";
 import { dshClientFactorySource } from "../dsh/client.js";
 
 const ALLOWED_TARGETS = new Set(["T5", "T6"]);
@@ -683,7 +683,7 @@ export async function buildDshBundle(
     ],
     dependencies: DSH_RUNTIME_DEPENDENCIES,
     peerDependencies: DSH_RUNTIME_PEERS,
-    engines: { node: DSH_NODE_ENGINE },
+    engines: DSH_ENGINES,
     dsh: {
       bundle: { patch: "./cordis.patch.yml" },
       client: {
@@ -791,7 +791,7 @@ export function verifyDshBundle(directory, plan) {
     manifest.main !== "index.js" ||
     manifest.exports?.["./client"] !== "./client.js" ||
     manifest.private !== !plan.releasable ||
-    manifest.engines?.node !== DSH_NODE_ENGINE ||
+    JSON.stringify(manifest.engines) !== JSON.stringify(DSH_ENGINES) ||
     JSON.stringify(manifest.dependencies) !==
       JSON.stringify(DSH_RUNTIME_DEPENDENCIES) ||
     JSON.stringify(manifest.peerDependencies) !==

@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DSH_RUNTIME_PEERS } from "../dsh/runtime-contract.mjs";
+import { executeRegisteredTool, mountNativeToolExecutor } from "../dsh/tool-batch.mjs";
 import { createPlugin } from "../dsh/plugin.mjs";
 import { verifyDshWatchlistRole } from "./dsh-watchlist-role.mjs";
 import {
@@ -52,6 +53,14 @@ function resolveDshRuntime() {
       throw new Error(`DSH verification requires exact ${name}@${expected}; installed ${manifest.version}`);
     }
   }
+  const executorName = "@deepseek-ai/dsh-tool-executor-native";
+  const executorManifest = JSON.parse(readFileSync(
+    join(packages, "dsh-tool-executor-native", "package.json"),
+    "utf8",
+  ));
+  if (executorManifest.version !== version) {
+    throw new Error(`DSH verification requires exact ${executorName}@${version}; installed ${executorManifest.version}`);
+  }
   const entries = {
     agent: join(packages, "dsh-agent", "lib", "index.js"),
     scope: join(packages, "dsh-scope", "lib", "index.js"),
@@ -66,6 +75,7 @@ function resolveDshRuntime() {
     storage: join(packages, "dsh-storage", "lib", "index.js"),
     storageJson: join(packages, "dsh-storage-json", "lib", "index.js"),
     storageDomain: join(packages, "dsh-storage-domain", "lib", "index.js"),
+    executor: join(packages, "dsh-tool-executor-native", "lib", "index.js"),
   };
   for (const path of Object.values(entries)) {
     if (!existsSync(path)) throw new Error(`DSH verification requires installed entry ${path}`);
@@ -202,6 +212,7 @@ export async function verifyAgainstDshTools({
     const ctx = new Context();
     await ctx.plugin(SystemPrompt);
     await ctx.plugin(ToolRuntime);
+    await mountNativeToolExecutor(ctx, pathToFileURL(runtime.executor).href);
     await ctx.plugin(CommandRuntime);
     await ctx.plugin(SessionStore);
     await ctx.plugin(SessionProjectionRegistry);
@@ -371,7 +382,7 @@ export async function verifyAgainstDshTools({
     scopedCounterparts = true;
 
     const executeFor = (agent, name, args, callId) =>
-      ctx.tools.execute({
+      executeRegisteredTool(ctx.tools, {
         agent,
         signal: new AbortController().signal,
         callId,
@@ -395,10 +406,12 @@ export async function verifyAgainstDshTools({
         render: () => [{ type: "text", text: "Nested chart metadata probe" }],
       },
       async execute(args, exec) {
-        const child = await ctx.tools.execute({
-          agent: exec.agent, signal: exec.signal,
-          rootCallId: exec.rootCallId, parent: exec.token,
-          callId: `${exec.callId}-chart`, name: "chart_ohlcv", arguments: args,
+        const child = await executeRegisteredTool(ctx.tools, {
+          agent: exec.agent,
+          signal: exec.signal,
+          callId: `${exec.callId}-chart`,
+          name: "chart_ohlcv",
+          arguments: args,
         });
         assert.equal(child.isError, false);
         return { meta: child.meta };
@@ -609,7 +622,7 @@ export async function verifyAgainstDshTools({
     }
     receiptHandoffs = true;
 
-    const result = await ctx.tools.execute({
+    const result = await executeRegisteredTool(ctx.tools, {
       agent: resumed.agent,
       signal: new AbortController().signal,
       callId: "dsh-verify-finance-capabilities",

@@ -5,6 +5,17 @@ follow Semantic Versioning. The exact tier, plugin inventory, maturity, and
 content hashes remain authoritative in each tarball's `dsh-lock.json` and
 `release-lock.json`.
 
+## 0.1.18 - 2026-11-08
+
+- Require DSH `0.2.2-rc.1` for the host and tested service peers. Declare exact
+  `engines.dsh` and Node `>=24.9.0`. There is no stable DSH `0.2.2` pin.
+  Published `0.1.17` remains the package that requires DSH `0.2.1-rc.2`.
+- Execute registered tools through the DSH tool-batch API. Mount the native
+  tool executor in the verification and review-role harnesses. The host profile
+  supplies that executor; it is not an npm peer.
+- Publish DSH `0.1.18` as `latest`, selected from its own published `0.1.17`
+  baseline. Pi remains `0.1.16`.
+
 ## 0.1.17 - 2026-10-27
 
 - Carry the shared event decoder that treats a present nil image list as empty,

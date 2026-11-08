@@ -35,7 +35,7 @@ import {
   sep,
 } from "node:path";
 import { DEFAULT_AGGREGATE_TARGET } from "./aggregate-bundle.js";
-import { DSH_NODE_ENGINE } from "../dsh/runtime-contract.mjs";
+import { DSH_ENGINES } from "../dsh/runtime-contract.mjs";
 import {
   DSH_OUTPUT_DIR,
   DSH_PACKAGE_NAME,
@@ -327,7 +327,7 @@ function dshNpmManifest(plan) {
       "gleam",
       "all-in-one",
     ],
-    engines: { node: DSH_NODE_ENGINE },
+    engines: DSH_ENGINES,
     dependencies: runtimeDependencies(),
     peerDependencies: DSH_PEERS,
     dsh: {
@@ -512,7 +512,7 @@ export function verifyDshNpmPackageDirectory(directory, expectedPlan) {
     manifest.exports?.["./client"] !== "./client.js" ||
     JSON.stringify(manifest.files) !== JSON.stringify(DSH_NPM_PACKAGE_FILES) ||
     manifest.license !== "Apache-2.0" ||
-    manifest.engines?.node !== DSH_NODE_ENGINE ||
+    JSON.stringify(manifest.engines) !== JSON.stringify(DSH_ENGINES) ||
     JSON.stringify(manifest.dependencies) !==
       JSON.stringify(expectedRuntimeDependencies) ||
     JSON.stringify(manifest.peerDependencies) !== JSON.stringify(DSH_PEERS) ||

@@ -24,7 +24,7 @@ import {
   verifyDshNpmPackageDirectory,
   verifyDshNpmRelease,
 } from "../../scripts/dsh-npm-package.js";
-import { DSH_NODE_ENGINE } from "../../dsh/runtime-contract.mjs";
+import { DSH_ENGINES } from "../../dsh/runtime-contract.mjs";
 import { readTierManifest } from "../../scripts/tiers.js";
 
 const temporaryDirectories = [];
@@ -116,7 +116,7 @@ function writeFixtureBundle(plan) {
         main: "index.js",
         exports: { ".": "./index.js", "./client": "./client.js" },
         private: !plan.releasable,
-        engines: { node: DSH_NODE_ENGINE },
+        engines: DSH_ENGINES,
         dependencies: DSH_RUNTIME_DEPENDENCIES,
         peerDependencies: DSH_RUNTIME_PEERS,
         dsh: {
@@ -198,15 +198,15 @@ async function buildFixture(plan) {
 
 describe("dsh-sparkles npm packaging", () => {
   test("requires the exact declared DSH host version", () => {
-    const run = () => ({ exitCode: 0, stdout: "0.2.1-rc.2\n", stderr: "" });
+    const run = () => ({ exitCode: 0, stdout: "0.2.2-rc.1\n", stderr: "" });
     expect(
-      assertDshHostVersion("dsh", "0.2.1-rc.2", { run }),
-    ).toBe("0.2.1-rc.2");
+      assertDshHostVersion("dsh", "0.2.2-rc.1", { run }),
+    ).toBe("0.2.2-rc.1");
     expect(() =>
-      assertDshHostVersion("dsh", "0.2.1-rc.2", {
+      assertDshHostVersion("dsh", "0.2.2-rc.1", {
         run: () => ({ exitCode: 0, stdout: "0.1.7-rc.2\n", stderr: "" }),
       }),
-    ).toThrow("Installed DSH host is 0.1.7-rc.2, expected exact 0.2.1-rc.2");
+    ).toThrow("Installed DSH host is 0.1.7-rc.2, expected exact 0.2.2-rc.1");
   });
 
   test("derives the T6 all-in-one bundle and preserves the maturity gate", () => {
@@ -232,10 +232,10 @@ describe("dsh-sparkles npm packaging", () => {
     expect(t6.omittedProposals).toEqual([]);
     expect(t6.partialImplementations).toEqual([]);
     expect(t6.openBlockers).toEqual([]);
-    expect(t6.packageVersion).toBe("0.1.17");
+    expect(t6.packageVersion).toBe("0.1.18");
     expect(t6.maturity).toBe("product_useful_dsh_aggregate");
     expect(t6.dshRelease).toMatchObject({
-      version: "0.1.17",
+      version: "0.1.18",
       status: "product_useful",
       target: "T6",
     });
@@ -310,7 +310,8 @@ describe("dsh-sparkles npm packaging", () => {
       "pdfjs-dist": "6.2.108",
     });
     expect(manifest.peerDependencies).toEqual(DSH_RUNTIME_PEERS);
-    expect(manifest.peerDependencies["@deepseek-ai/dsh"]).toBe("0.2.1-rc.2");
+    expect(manifest.peerDependencies["@deepseek-ai/dsh"]).toBe("0.2.2-rc.1");
+    expect(manifest.engines).toEqual({ node: ">=24.9.0", dsh: "0.2.2-rc.1" });
     expect(manifest.scripts).toBeUndefined();
     expect(manifest.publishConfig).toEqual({
       access: "public",

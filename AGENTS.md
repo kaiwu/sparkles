@@ -226,7 +226,7 @@ never return a placeholder success. Provider networking continues through
 or assume a Pi-provided fetch API exists in DSH; verify the shared interpreter
 under DSH's supported Node runtime.
 
-Installed DSH 0.2.0-rc.2 announces agents on serial `agent/created` with `source`
+Installed DSH 0.2.2-rc.1 announces agents on serial `agent/created` with `source`
 (`startup` | `resume` | `clear` | `compact`). Instantiate scoped shells on
 that event, restore them from the live session log using `source`, and
 release them on `agent/disposed`. DSH append-only forks/resumes are distinct sessions;

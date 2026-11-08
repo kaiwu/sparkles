@@ -9,14 +9,18 @@ host effects are adapted. Pi users install the sibling
 [`@pi-sparkles/pi-sparkles`](https://www.npmjs.com/package/@pi-sparkles/pi-sparkles)
 package instead.
 
-The current npm release is **0.1.17**, published independently from Pi 0.1.16.
-It includes explicitly selected Equibles US company snapshots through
+The published npm release is **0.1.18**, published independently from Pi 0.1.16
+on 2026-11-08. It requires DSH `0.2.2-rc.1`. Published **0.1.17** remains the
+package that requires DSH `0.2.1-rc.2`. This release includes the same explicitly
+selected Equibles US company snapshots through
 `company_profile` with caller-owned `EQUIBLES_API_KEY`, plus the shared nil-safe
-prompt decoder. The source preserves unconfirmed MIC and share-unit compatibility,
-including ordinary-share versus ADR limitations. It never falls back to Twelve Data.
+prompt decoder. There is no stable DSH `0.2.2` release. The source preserves
+unconfirmed MIC and share-unit compatibility, including ordinary-share versus ADR
+limitations. It never falls back to Twelve Data.
 
-Requires **DSH 0.2.1-rc.2**, with exact host and service peers, including
-`dsh-working-directory`. Other host versions require a separate compatibility
+Requires **DSH 0.2.2-rc.1**, with exact host and service peers, including
+`dsh-working-directory`, Node `>=24.9.0`, and `engines.dsh` set to that exact
+host version. Other host versions require a separate compatibility
 review. Session receipts use `snapshotEvents()`, including after resume.
 New custom entries and status updates use the exported `appendPluginRecord`
 API as `plugin:pi-sparkles/custom` and `plugin:pi-sparkles/status`. DSH marks
@@ -192,7 +196,7 @@ dsh --profile <name> --dump-config
 `bun test test/dsh test/workflow/dsh_npm_package.test.js` covers the adapter,
 parallel invocation isolation, per-agent state ownership, lifecycle/session
 mapping, overlay component/projection, floating chart stacking/toggles and replay, release gate, locks,
-and npm inventory. `bun run dsh:verify` currently uses DSH 0.2.1-rc.2
+and npm inventory. `bun run dsh:verify` currently uses DSH 0.2.2-rc.1
 implementation to create two real agent scopes, expose all 253 effective tools,
 verify the shared prompt and track projection, and prove that a watchlist
 mutation cannot leak to the second agent. It also verifies CN/HK/US receipt
@@ -205,11 +209,12 @@ boots that profile through the installed DSH CLI, checks authenticated page
 and client asset loading, then runs the receipt/runtime checks under Node
 against that installed package. Asset checks are structural, not visual QA.
 
-The generated package declares the exact `@deepseek-ai/dsh@0.2.1-rc.2` host
-peer, pins its tested DSH service peers to the same version, and pins
+The generated package declares the exact `@deepseek-ai/dsh@0.2.2-rc.1` host
+peer, pins its tested DSH service peers to the same version, declares
+`engines.dsh` as that version, and pins
 `pdfjs-dist` plus its Bun-compatible `@napi-rs/canvas` polyfill. PDF runtime
 state is initialized only by a PDF operation, never while the DSH entrypoint
-registers. Its Node range matches DSH (`^22.19.0 || >=24.0.0`). It carries exact
+registers. Its Node range matches DSH (`>=24.9.0`). It carries exact
 locks/checksums and contains no lifecycle scripts or credential values. The release install gate
 requires that exact host version.
 
@@ -239,3 +244,24 @@ stacking, the fixed floor, hide/show, dragging, 1.5× status-bar sizing and narr
 screens; the local DSH visual review is accepted by the release instruction.
 DSH 0.1.16 advances its own published 0.1.15 baseline. Pi remains at 0.1.13;
 verification never publishes either package.
+
+## Contract review — 2026-11-08
+
+Compared installed DSH `0.2.2-rc.1` with source commit
+`66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db` (`dsh-v0.2.2-rc.1`), against the
+previous `687f282e8625c6b8d11ff58211a90524be2e4317` (`dsh-v0.2.1-rc.2`)
+contract. There is no untagged DSH `0.2.2` release. All changes below belong
+to the DSH adapter and distribution lane. The shared finance cores, Pi shells,
+provider selection, receipt authority, and `cn`/`hk`/`us` applicability stay
+the same. Published DSH `0.1.18` is the next patch after published `0.1.17`.
+
+| Surface | Gap or reviewed change | Disposition |
+| --- | --- | --- |
+| Host, peers, Node | Exact `0.2.1-rc.2` peers do not match running `0.2.2-rc.1`. The host requires Node `>=24.9.0` and checks `engines.dsh` before peer dependencies. | Pin the host and every tested service peer to `0.2.2-rc.1`. Declare `engines.dsh` as that exact version and set Node to `>=24.9.0`. Verify installed peer versions individually. |
+| Tool execution | `ToolsService.execute` accepts one batch of tool-call blocks and requires a mounted executor. The old single-call shape is gone. | Send one `tool-call` with stringified arguments and unwrap `results[0].result`. Mount `@deepseek-ai/dsh-tool-executor-native` in the verify and review-role harnesses. The host profile supplies that executor; it is not an npm peer. |
+| Nested chart calls | Batch input has no `parent` or `rootCallId`. | Execute the nested `chart_ohlcv` proof as its own batch call. Presentation `meta` still comes from `output.presentationMeta`. The floating panel still folds `tool/result` and `tool/ptc-dispatch`. |
+| Session, projections, storage, commands | Reviewed against `0.2.2-rc.1` | Keep `appendPluginRecord`, existing `snapshotEvents()` reads, projection `register`/`snapshot().values`, the review storage spec, commands, system-prompt sections, working directory, and serial `agent/created` sources. |
+
+Validation for this checkout uses the focused DSH tests and the real installed
+DSH `0.2.2-rc.1` runtime. The reviewed candidate is published as `0.1.18`.
+Published `0.1.17` remains the package that requires DSH `0.2.1-rc.2`.

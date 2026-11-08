@@ -15,7 +15,7 @@ mutate a paper or live order.
 | Host | npm package | Host-native output | Release state |
 | --- | --- | --- | --- |
 | Pi | [`@pi-sparkles/pi-sparkles`](https://www.npmjs.com/package/@pi-sparkles/pi-sparkles) | terminal components, including responsive colored Unicode OHLCV charts | Published · ProductUseful T1–T6 |
-| DSH | [`@dsh-sparkles/dsh-sparkles`](https://www.npmjs.com/package/@dsh-sparkles/dsh-sparkles) | browser slots, session projections, and floating SVG OHLCV charts | Published 0.1.17 · ProductUseful T1–T6 |
+| DSH | [`@dsh-sparkles/dsh-sparkles`](https://www.npmjs.com/package/@dsh-sparkles/dsh-sparkles) | browser slots, session projections, and floating SVG OHLCV charts | Published 0.1.18 · ProductUseful T1–T6 |
 
 ## Install and start
 
@@ -47,7 +47,8 @@ provider fetch. A missing adapter is allowed and never triggers fallback.
 | Inventory | 135 ledger plugins · 142 Gleam plugin packages · 77 finance libraries |
 | Tracks | closed `cn` / `hk` / `us` |
 | Pi release | `@pi-sparkles/pi-sparkles@0.1.16` · tested with Pi `1.5.0` |
-| Tested with | Pi `1.5.0` · DSH `0.2.1-rc.2` · Gleam `1.18.0` · Bun `1.3.14` |
+| DSH release | `@dsh-sparkles/dsh-sparkles@0.1.18` · requires DSH `0.2.2-rc.1` and Node `>=24.9.0` |
+| Tested with | Pi `1.5.0` · DSH `0.2.2-rc.1` · Gleam `1.18.0` · Bun `1.3.14` |
 
 The seven packages excluded from the aggregate (`hello`, `lifecycle`,
 `safety_gate`, `cn_setup`, `hk_setup`, `cn_fundamentals`, `hk_fundamentals`)

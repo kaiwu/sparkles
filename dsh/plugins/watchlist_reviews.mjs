@@ -3,6 +3,7 @@
 import { createReviewRunner, reviewDomain, reviewProjection, REVIEW_EVENT } from "../watchlist-reviews.mjs";
 import { loadSessionRuntime } from "../plugin.mjs";
 import { acquireReviewLease } from "../store-lease.mjs";
+import { executeRegisteredTool } from "../tool-batch.mjs";
 
 const object = (properties = {}, required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const string = { type: "string" };
@@ -34,7 +35,7 @@ export function createWatchlistReviews(laws) {
         invoke(agent, name, args, signal, callId) {
           // Use DSH's complete policy pipeline. Denials, including PTC mode
           // collapse, remain cannot_check; no raw callback or fallback bypass.
-          return ctx.tools.execute({ agent, name, arguments: args, signal, callId });
+          return executeRegisteredTool(ctx.tools, { agent, name, arguments: args, signal, callId });
         },
         publish(id, view) {
           const agent = ctx.agents.get(id);

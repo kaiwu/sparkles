@@ -1,7 +1,11 @@
 // Exact installed/source DSH contract. This is host compatibility metadata,
 // independent of either Sparkles npm package's release version.
-export const DSH_HOST_VERSION = "0.2.1-rc.2";
-export const DSH_NODE_ENGINE = "^22.19.0 || >=24.0.0";
+export const DSH_HOST_VERSION = "0.2.2-rc.1";
+export const DSH_NODE_ENGINE = ">=24.9.0";
+export const DSH_ENGINES = {
+  node: DSH_NODE_ENGINE,
+  dsh: DSH_HOST_VERSION,
+};
 export const DSH_RUNTIME_PEERS = {
   "@deepseek-ai/dsh": DSH_HOST_VERSION,
   "@deepseek-ai/dsh-agent": DSH_HOST_VERSION,

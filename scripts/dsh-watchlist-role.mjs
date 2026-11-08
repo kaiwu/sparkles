@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { executeRegisteredTool, mountNativeToolExecutor } from "../dsh/tool-batch.mjs";
 
 const HOUR = 3_600_000;
 const scriptPath = fileURLToPath(import.meta.url);
@@ -29,6 +30,10 @@ async function boot(bundleEntry, directory, { crash = false } = {}) {
   ]);
   const ctx = new Context();
   for (const service of [SystemPrompt, Tools, Commands, Sessions, Projections, Agents, LocalFs]) await ctx.plugin(service);
+  await mountNativeToolExecutor(
+    ctx,
+    pathToFileURL(join(packages, "dsh-tool-executor-native", "lib", "index.js")).href,
+  );
   await ctx.plugin(WorkingDirectory, {});
   await ctx.plugin(Storage);
   await ctx.plugin(StorageJson, { root: directory });
@@ -82,8 +87,10 @@ async function boot(bundleEntry, directory, { crash = false } = {}) {
   ctx.provide("sessionController", { resolveAgent: async (id) => ({ agent: await createAgent(String(id)) }) });
   const productFiber = await ctx.plugin(product, { dsh: { watchlist_reviews: { lockDirectory: join(directory, "lease") } } });
   const call = async (agent, name, input = {}) => {
-    const result = await ctx.tools.execute({ agent, name, arguments: input,
-      signal: new AbortController().signal, callId: `role-${name}` });
+    const result = await executeRegisteredTool(ctx.tools, {
+      agent, name, arguments: input,
+      signal: new AbortController().signal, callId: `role-${name}`,
+    });
     assert.equal(result.isError, false, `${name}: ${JSON.stringify(result.content)}`);
     return result.value;
   };
