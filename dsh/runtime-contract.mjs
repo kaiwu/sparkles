@@ -1,6 +1,6 @@
 // Exact installed/source DSH contract. This is host compatibility metadata,
 // independent of either Sparkles npm package's release version.
-export const DSH_HOST_VERSION = "0.2.2-rc.1";
+export const DSH_HOST_VERSION = "0.2.2-rc.5";
 export const DSH_NODE_ENGINE = ">=24.9.0";
 export const DSH_ENGINES = {
   node: DSH_NODE_ENGINE,

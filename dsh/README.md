@@ -9,19 +9,17 @@ host effects are adapted. Pi users install the sibling
 [`@pi-sparkles/pi-sparkles`](https://www.npmjs.com/package/@pi-sparkles/pi-sparkles)
 package instead.
 
-The published npm release is **0.1.18**, published independently from Pi 0.1.16
-on 2026-11-08. It requires DSH `0.2.2-rc.1`. Published **0.1.17** remains the
-package that requires DSH `0.2.1-rc.2`. This release includes the same explicitly
-selected Equibles US company snapshots through
-`company_profile` with caller-owned `EQUIBLES_API_KEY`, plus the shared nil-safe
-prompt decoder. There is no stable DSH `0.2.2` release. The source preserves
+The published npm release is **0.1.19**, dated 2026-11-19. It targets DSH
+`0.2.2-rc.5` and adds **Remove all** to the chart picker. Sparkles `0.1.18` targets
+DSH `0.2.2-rc.1`, and Sparkles `0.1.17` targets DSH `0.2.1-rc.2`.
+The Equibles US company snapshot is available through `company_profile`
+with caller-owned `EQUIBLES_API_KEY`. The source preserves
 unconfirmed MIC and share-unit compatibility, including ordinary-share versus ADR
 limitations. It never falls back to Twelve Data.
 
-Requires **DSH 0.2.2-rc.1**, with exact host and service peers, including
-`dsh-working-directory`, Node `>=24.9.0`, and `engines.dsh` set to that exact
-host version. Other host versions require a separate compatibility
-review. Session receipts use `snapshotEvents()`, including after resume.
+The package built from this checkout requires **DSH 0.2.2-rc.5** and Node
+`>=24.9.0`. It pins the host, the tested service peers, and `engines.dsh` to that
+exact DSH version. Session receipts use `snapshotEvents()`, including after resume.
 New custom entries and status updates use the exported `appendPluginRecord`
 API as `plugin:pi-sparkles/custom` and `plugin:pi-sparkles/status`. DSH marks
 these records `ignorable`, snapshots their JSON data, and retains them across
@@ -167,9 +165,10 @@ Drag the bar to move the complete stack. Chart width follows 1.5 times the
 measured status-bar width, capped to the available screen width. The bar stays
 the floor when a middle card is hidden: cards above move down and cards below
 keep their positions.
-Use each card's Hide button or its checkbox under Charts to toggle it. Visibility
-is local to the browser component and separately remembered for each session
-until page reload. The latest 12 charts are available in the panel; older exact
+Use each card's Hide button or its checkbox under Charts to toggle it. Choose
+**Remove all** in the picker to clear every listed chart from the picker and
+floating stack. The browser remembers these choices per session until page
+reload. The latest 12 charts are available in the panel; older exact
 outputs stay in the transcript. Tall stacks scroll above the bar without card
 overlap. Both hosts keep exact text in ordinary tool output. See [`../CHARTS.md`](../CHARTS.md).
 After a package update, restart the DSH server as well as refreshing the browser.
@@ -196,7 +195,7 @@ dsh --profile <name> --dump-config
 `bun test test/dsh test/workflow/dsh_npm_package.test.js` covers the adapter,
 parallel invocation isolation, per-agent state ownership, lifecycle/session
 mapping, overlay component/projection, floating chart stacking/toggles and replay, release gate, locks,
-and npm inventory. `bun run dsh:verify` currently uses DSH 0.2.2-rc.1
+and npm inventory. `bun run dsh:verify` uses the installed DSH 0.2.2-rc.5
 implementation to create two real agent scopes, expose all 253 effective tools,
 verify the shared prompt and track projection, and prove that a watchlist
 mutation cannot leak to the second agent. It also verifies CN/HK/US receipt
@@ -209,7 +208,7 @@ boots that profile through the installed DSH CLI, checks authenticated page
 and client asset loading, then runs the receipt/runtime checks under Node
 against that installed package. Asset checks are structural, not visual QA.
 
-The generated package declares the exact `@deepseek-ai/dsh@0.2.2-rc.1` host
+The generated package declares the exact `@deepseek-ai/dsh@0.2.2-rc.5` host
 peer, pins its tested DSH service peers to the same version, declares
 `engines.dsh` as that version, and pins
 `pdfjs-dist` plus its Bun-compatible `@napi-rs/canvas` polyfill. PDF runtime
@@ -217,6 +216,17 @@ state is initialized only by a PDF operation, never while the DSH entrypoint
 registers. Its Node range matches DSH (`>=24.9.0`). It carries exact
 locks/checksums and contains no lifecycle scripts or credential values. The release install gate
 requires that exact host version.
+
+## Contract review — DSH 0.2.2-rc.5
+
+Release `0.1.19` aligns the host peer, service peers, `engines.dsh`,
+and CI install with DSH `0.2.2-rc.5`. [Upstream source tag](https://github.com/deepseek-ai/deepseek-harness/tree/dsh-v0.2.2-rc.5)
+
+The real runtime passed batched tools, agent creation, session replay,
+working-directory changes, receipt handoffs, and durable review recovery.
+The clean install booted the web client and served its authenticated assets.
+Chromium rendered the finance status badge for a live DSH session in
+`shell.overlay`.
 
 ## Contract review — 2026-10-18
 
@@ -262,6 +272,6 @@ the same. Published DSH `0.1.18` is the next patch after published `0.1.17`.
 | Nested chart calls | Batch input has no `parent` or `rootCallId`. | Execute the nested `chart_ohlcv` proof as its own batch call. Presentation `meta` still comes from `output.presentationMeta`. The floating panel still folds `tool/result` and `tool/ptc-dispatch`. |
 | Session, projections, storage, commands | Reviewed against `0.2.2-rc.1` | Keep `appendPluginRecord`, existing `snapshotEvents()` reads, projection `register`/`snapshot().values`, the review storage spec, commands, system-prompt sections, working directory, and serial `agent/created` sources. |
 
-Validation for this checkout uses the focused DSH tests and the real installed
-DSH `0.2.2-rc.1` runtime. The reviewed candidate is published as `0.1.18`.
+The `0.1.18` release used the focused DSH tests and the installed
+DSH `0.2.2-rc.1` runtime.
 Published `0.1.17` remains the package that requires DSH `0.2.1-rc.2`.

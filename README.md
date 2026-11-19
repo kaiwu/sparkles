@@ -15,15 +15,15 @@ mutate a paper or live order.
 | Host | npm package | Host-native output | Release state |
 | --- | --- | --- | --- |
 | Pi | [`@pi-sparkles/pi-sparkles`](https://www.npmjs.com/package/@pi-sparkles/pi-sparkles) | terminal components, including responsive colored Unicode OHLCV charts | Published · ProductUseful T1–T6 |
-| DSH | [`@dsh-sparkles/dsh-sparkles`](https://www.npmjs.com/package/@dsh-sparkles/dsh-sparkles) | browser slots, session projections, and floating SVG OHLCV charts | Published 0.1.18 · ProductUseful T1–T6 |
+| DSH | [`@dsh-sparkles/dsh-sparkles`](https://www.npmjs.com/package/@dsh-sparkles/dsh-sparkles) | browser slots, session projections, and floating SVG OHLCV charts | Published 0.1.19 · ProductUseful T1–T6 |
 
 ## Install and start
 
 Pi:
 
 ```sh
-npm install --global @earendil-works/pi-coding-agent@1.5.0
-pi install npm:@pi-sparkles/pi-sparkles@0.1.16
+npm install --global @earendil-works/pi-coding-agent@1.5.2
+pi install npm:@pi-sparkles/pi-sparkles@0.1.17
 export AGENT_CONTACT="ops@example.com"
 pi --finance-track cn
 ```
@@ -31,6 +31,7 @@ pi --finance-track cn
 DeepSeek Harness:
 
 ```sh
+npm install --global @deepseek-ai/dsh@0.2.2-rc.5
 dsh plugin --profile <name> add @dsh-sparkles/dsh-sparkles@latest
 export AGENT_CONTACT="ops@example.com"
 dsh --profile <name>
@@ -46,9 +47,10 @@ provider fetch. A missing adapter is allowed and never triggers fallback.
 | Tiers | T1–T6 ProductUseful in independent Pi and DSH lanes · 0 open Pi blockers · [tiers.json](tiers.json) |
 | Inventory | 135 ledger plugins · 142 Gleam plugin packages · 77 finance libraries |
 | Tracks | closed `cn` / `hk` / `us` |
-| Pi release | `@pi-sparkles/pi-sparkles@0.1.16` · tested with Pi `1.5.0` |
-| DSH release | `@dsh-sparkles/dsh-sparkles@0.1.18` · requires DSH `0.2.2-rc.1` and Node `>=24.9.0` |
-| Tested with | Pi `1.5.0` · DSH `0.2.2-rc.1` · Gleam `1.18.0` · Bun `1.3.14` |
+| Pi release | `@pi-sparkles/pi-sparkles@0.1.17` · tested with Pi `1.5.2` |
+| DSH release | `@dsh-sparkles/dsh-sparkles@0.1.19` · requires DSH `0.2.2-rc.5` and Node `>=24.9.0` |
+| Source package targets | Pi `1.5.2` · DSH `0.2.2-rc.5` |
+| Build toolchain | Gleam `1.18.0` · Bun `1.3.14` |
 
 The seven packages excluded from the aggregate (`hello`, `lifecycle`,
 `safety_gate`, `cn_setup`, `hk_setup`, `cn_fundamentals`, `hk_fundamentals`)
@@ -61,7 +63,8 @@ a whole role tier. Tiers are not a 6×3 track matrix. See
 The DSH distribution mounts 131 global-safe shells plus per-agent counterparts for
 track status, swing workbench, portfolio, and watchlist. Its finance track
 status and vertically stacked OHLCV charts share DSH's browser `shell.overlay`.
-Drag the status bar to move the group; hide/show each chart separately. See
+Drag the status bar to move the group. Toggle each chart separately or choose
+**Remove all** in the picker to clear the active session’s stack. See
 [dsh/README.md](dsh/README.md).
 
 DSH also provides opt-in, session-owned saved picks and bounded recurring
@@ -86,7 +89,7 @@ Try: “My picks are CN 600519 and CN 600000.” If Pi offers to remember them,
 reply “Yes, remember these picks across chats.” In another chat, ask to show
 the saved watchlist or review it once using Eastmoney A-share quotes. Pi Durable
 follows Pi's release version: this checkout bundles Durable, Chord and Pi AI
-1.5.0 to match the tested Pi 1.5.0 host. They initialize after opt-in; DSH uses
+1.5.2 to match the Pi 1.5.2 host. They initialize after opt-in. DSH uses
 its native per-session watchlist storage and review runner.
 
 ## Docs
@@ -119,10 +122,10 @@ bun run test:aggregate:pi
 ```
 
 `test:aggregate:pi` loads the cumulative T1–T6 entrypoint once. Per-plugin and
-earlier-tier Pi-load targets are not part of verification. It uses
-`PI_SOURCE_DIR` when that checkout has its dependencies, defaults to
-`/home/kaiwu/Documents/github/pi-mono` in this workspace, and falls back to the
-installed Pi.
+earlier-tier Pi-load targets are not part of verification. It uses a hydrated
+`PI_SOURCE_DIR` checkout when its coding-agent version matches the package's
+target. The default checkout is `/home/kaiwu/Documents/github/pi-mono` in this
+workspace. Otherwise the test uses the matching installed Pi CLI.
 
 Focused diagnostics stay cheap; promotion is always a whole tier:
 

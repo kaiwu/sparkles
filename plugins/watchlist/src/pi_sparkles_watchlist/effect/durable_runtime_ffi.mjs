@@ -464,7 +464,7 @@ export function new_runtime(
           fsync: true,
         });
         const write = storage.commit.bind(storage);
-        // Durable 1.5.0 stores one call as a group. The budget check runs
+        // Durable stores one call as a group. The budget check runs
         // before any batch is appended, and the original receive callback
         // still reports each stored sequence.
         storage.commit = async (batches, receive, context) => {

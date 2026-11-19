@@ -36,7 +36,10 @@ import {
   ROOT,
 } from "./modules.js";
 import { readTierManifest } from "./tiers.js";
-import { TESTED_PI_HOST_VERSION } from "./pi-durable-dependencies.js";
+import {
+  assertPiHostVersion,
+  TESTED_PI_HOST_VERSION,
+} from "./pi-durable-dependencies.js";
 
 const NPM_RELEASE_SCHEMA_VERSION = 2;
 const PREVIOUS_NPM_RELEASE_SCHEMA_VERSION = 1;
@@ -937,6 +940,14 @@ export function npmInstallSmoke(
   if (typeof piCommand !== "string" || piCommand.trim().length === 0) {
     throw new Error("Npm install smoke requires a Pi command");
   }
+  const piVersion = assertPiHostVersion(requireSuccess(
+    runCaptured(piCommand, ["--version"], {
+      cwd: ROOT,
+      timeout: STARTUP_SMOKE_TIMEOUT_MILLISECONDS,
+      killSignal: "SIGKILL",
+    }),
+    "Pi host version check",
+  ).stdout);
   const installation = mkdtempSync(
     join(tmpdir(), "pi-sparkles-npm-install-smoke-"),
   );
@@ -1023,7 +1034,7 @@ export function npmInstallSmoke(
             PI_CODING_AGENT_SESSION_DIR: join(installation, "sessions"),
           },
           stdin: Buffer.from(
-            '{"id":"pi-sparkles-startup","type":"get_state"}\n',
+            '{"id":"pi-sparkles-startup","type":"get_commands"}\n',
           ),
           timeout: STARTUP_SMOKE_TIMEOUT_MILLISECONDS,
           killSignal: "SIGKILL",
@@ -1043,7 +1054,7 @@ export function npmInstallSmoke(
       if (
         message?.id === "pi-sparkles-startup" &&
         message?.type === "response" &&
-        message?.command === "get_state"
+        message?.command === "get_commands"
       ) {
         startupResponse = message;
         break;
@@ -1054,8 +1065,14 @@ export function npmInstallSmoke(
         "plain Pi npm tarball load did not return a successful startup RPC response",
       );
     }
+    const commands = startupResponse.data?.commands ?? [];
+    for (const name of ["finance-setup", "finance-track"]) {
+      if (!commands.some((command) => command.name === name && command.source === "extension")) {
+        throw new Error(`plain Pi npm tarball load did not register /${name}`);
+      }
+    }
     console.log(
-      `${summary.throughTierId} npm install smoke passed with ${piCommand}, @napi-rs/canvas ${installedRuntimeDependencies["@napi-rs/canvas"]}, and pdfjs-dist ${installedRuntimeDependencies["pdfjs-dist"]}`,
+      `${summary.throughTierId} npm install smoke passed with Pi ${piVersion}, @napi-rs/canvas ${installedRuntimeDependencies["@napi-rs/canvas"]}, and pdfjs-dist ${installedRuntimeDependencies["pdfjs-dist"]}`,
     );
     return summary;
   } finally {

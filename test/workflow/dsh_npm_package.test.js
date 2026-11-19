@@ -198,15 +198,15 @@ async function buildFixture(plan) {
 
 describe("dsh-sparkles npm packaging", () => {
   test("requires the exact declared DSH host version", () => {
-    const run = () => ({ exitCode: 0, stdout: "0.2.2-rc.1\n", stderr: "" });
+    const run = () => ({ exitCode: 0, stdout: "0.2.2-rc.5\n", stderr: "" });
     expect(
-      assertDshHostVersion("dsh", "0.2.2-rc.1", { run }),
-    ).toBe("0.2.2-rc.1");
+      assertDshHostVersion("dsh", "0.2.2-rc.5", { run }),
+    ).toBe("0.2.2-rc.5");
     expect(() =>
-      assertDshHostVersion("dsh", "0.2.2-rc.1", {
-        run: () => ({ exitCode: 0, stdout: "0.1.7-rc.2\n", stderr: "" }),
+      assertDshHostVersion("dsh", "0.2.2-rc.5", {
+        run: () => ({ exitCode: 0, stdout: "0.2.2-rc.1\n", stderr: "" }),
       }),
-    ).toThrow("Installed DSH host is 0.1.7-rc.2, expected exact 0.2.2-rc.1");
+    ).toThrow("Installed DSH host is 0.2.2-rc.1, expected exact 0.2.2-rc.5");
   });
 
   test("derives the T6 all-in-one bundle and preserves the maturity gate", () => {
@@ -232,10 +232,10 @@ describe("dsh-sparkles npm packaging", () => {
     expect(t6.omittedProposals).toEqual([]);
     expect(t6.partialImplementations).toEqual([]);
     expect(t6.openBlockers).toEqual([]);
-    expect(t6.packageVersion).toBe("0.1.18");
+    expect(t6.packageVersion).toBe("0.1.19");
     expect(t6.maturity).toBe("product_useful_dsh_aggregate");
     expect(t6.dshRelease).toMatchObject({
-      version: "0.1.18",
+      version: "0.1.19",
       status: "product_useful",
       target: "T6",
     });
@@ -310,8 +310,8 @@ describe("dsh-sparkles npm packaging", () => {
       "pdfjs-dist": "6.2.108",
     });
     expect(manifest.peerDependencies).toEqual(DSH_RUNTIME_PEERS);
-    expect(manifest.peerDependencies["@deepseek-ai/dsh"]).toBe("0.2.2-rc.1");
-    expect(manifest.engines).toEqual({ node: ">=24.9.0", dsh: "0.2.2-rc.1" });
+    expect(manifest.peerDependencies["@deepseek-ai/dsh"]).toBe("0.2.2-rc.5");
+    expect(manifest.engines).toEqual({ node: ">=24.9.0", dsh: "0.2.2-rc.5" });
     expect(manifest.scripts).toBeUndefined();
     expect(manifest.publishConfig).toEqual({
       access: "public",

@@ -235,6 +235,38 @@ describe("DSH floating chart stack", () => {
     expect(ids(render())).toEqual(["middle"]);
   });
 
+  test("remove all clears checked and unchecked charts from the active session's picker", () => {
+    const React = fakeReact();
+    const { overlay } = loadChartComponent(React);
+    const charts = ["checked", "unchecked"].map((id) => ({ id, meta: chartBlock(3).meta }));
+    const render = (sessionId = "s1", collection = charts) => {
+      React.begin();
+      return overlay({ useSessions: (selector) => selector(sessionState(sessionId, collection)) });
+    };
+    const stack = (node) => findByProp(node, "data-dsh-sparkles-chart-stack", "true");
+    const removeAll = (node) => findByProp(node, "aria-label", "Remove all charts");
+    findByKey(render(), "unchecked").children[0].props.onChange();
+    const withHidden = render();
+    expect(textContent(withHidden)).toContain("Charts 1/2");
+    expect(textContent(removeAll(withHidden))).toBe("Remove all");
+    removeAll(withHidden).props.onClick();
+
+    const cleared = render();
+    expect(findByKey(cleared, "unchecked")).toBeUndefined();
+    expect(findByKey(cleared, "checked")).toBeUndefined();
+    expect(removeAll(cleared)).toBeUndefined();
+    expect(stack(cleared)).toBeUndefined();
+    expect(textContent(cleared)).toContain("US · USD");
+    expect(textContent(render("s2"))).toContain("Charts 2/2");
+    expect(removeAll(render())).toBeUndefined();
+
+    const later = render("s1", [...charts, { id: "new", meta: chartBlock(4).meta }]);
+    expect(textContent(later)).toContain("Charts 1/1");
+    expect(stack(later).children[0].map((chart) => chart.props.chartId)).toEqual(["new"]);
+    removeAll(later).props.onClick();
+    expect(stack(render("s1", [...charts, { id: "new", meta: chartBlock(4).meta }]))).toBeUndefined();
+  });
+
   test("dragging the status bar moves one chart group and keeps its floor after removing a chart", () => {
     const React = fakeReact();
     const { overlay } = loadChartComponent(React);

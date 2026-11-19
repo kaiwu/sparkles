@@ -55,13 +55,24 @@ release verification load the T6 all-in-one aggregate entrypoint once so all
 The loader rejects earlier-tier and per-plugin target overrides.
 
 The T5 selection remains the historical 0.1.4 boundary. T6 is ProductUseful
-with zero omissions, partials, or blockers. Published Pi 0.1.16 is the patch
-after published baseline 0.1.15. It is tested with Pi 1.5.0, with Durable,
-Chord and Pi AI pinned to that same release. Registry `latest` resolves to
-0.1.16. DSH is independently published at 0.1.18.
+with zero omissions, partials, or blockers. Pi `0.1.17` is the patch after
+published baseline `0.1.16`. npm `latest` resolves to `0.1.17`. Pi Durable,
+Chord, and Pi AI match the tested Pi `1.5.2` host. DSH has its own published
+release, `0.1.19`. [Pi upstream release](https://github.com/earendil-works/pi/releases/tag/v1.5.2)
 
-Install `@pi-sparkles/pi-sparkles@0.1.16` on
-`@earendil-works/pi-coding-agent@1.5.0`.
+Install `@pi-sparkles/pi-sparkles@0.1.17` on
+`@earendil-works/pi-coding-agent@1.5.2`.
+
+The 2026-11-19 Pi publication uses the verified T6 tarball:
+
+```text
+dist/npm/t6/pi-sparkles-pi-sparkles-0.1.17.tgz
+sha256: be6a91746aefd4e47407bb326f1c21e2961b777988be20f8eb0c8cf2f628bcf2
+```
+
+npm recorded publication at `2026-11-19T14:49:13.925Z`. The public tarball matched
+the reviewed checksum. Preflight, registry evidence and the downloaded
+artifact are retained under `.work/releases/pi/0.1.17/`.
 
 The 2026-11-05 Pi publication uses the verified T6 tarball:
 
@@ -94,12 +105,14 @@ prefix with lifecycle scripts disabled, verifies the installed package and the
 exact `pdfjs-dist`/`@napi-rs/canvas` versions, imports its default extension
 without permitting eager PDF canvas initialization, removes every declared
 provider variable from the child environment, and asks plain Pi to load and
-register the entrypoint through an offline, sessionless RPC request. Both
-startup processes have a 15-second hard limit. For a manual equivalent:
+register the entrypoint through an offline, sessionless RPC request. The
+gate requires the exact tested Pi version and checks for the `finance-setup`
+and `finance-track` commands in the RPC response. Each startup command
+has a 15-second hard limit. For a manual equivalent with Pi `1.5.2`:
 
 ```sh
-npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.16.tgz
-printf '%s\n' '{"id":"startup","type":"get_state"}' | pi --no-extensions \
+npm install ./dist/npm/t6/pi-sparkles-pi-sparkles-0.1.17.tgz
+printf '%s\n' '{"id":"startup","type":"get_commands"}' | pi --no-extensions \
   --extension ./node_modules/@pi-sparkles/pi-sparkles/index.js \
   --mode rpc --no-session --offline
 ```
@@ -109,8 +122,8 @@ at runtime, and pins `@napi-rs/canvas@1.0.3` because Pi runs on Bun and later
 floating native canvas builds can block extension import. Neither dependency is
 initialized until a PDF operation invokes the parser. Pi's coding-agent and
 TUI remain host-owned and are declared with the Pi-required `"*"` peer ranges.
-The current Pi release pins Pi Durable, Chord and Pi AI to the same Pi 1.5.0
-release as the tested host; these are not independently versioned releases.
+The source package pins Pi Durable, Chord and Pi AI to the tested Pi 1.5.2
+release.
 The build rejects SDK pins that differ from the tested Pi version. They are
 bundled lazily for the Pi-only watchlist and initialize after conversational opt-in. Saving
 picks does not enable polling. The clean-install smoke uses an isolated home
@@ -280,9 +293,9 @@ browser entrypoint for `shell.overlay`. All 135 ledger components are covered:
 per DSH agent. DSH-only Cordis entries remain in the isolated `dsh/plugins/`
 lane. The exact excluded/scoped/extra lists are recorded in `dsh-lock.json` and
 the manifest's `dshSparkles` section. It declares the exact
-`@deepseek-ai/dsh@0.2.2-rc.1` host peer and pins the tested agent, tool, command,
+`@deepseek-ai/dsh@0.2.2-rc.5` host peer and pins the tested agent, tool, command,
 system-prompt, session-projection, working-directory, client-ui-session, and
-UI-layout service peers to `0.2.2-rc.1`. It declares `engines.dsh` as that exact
+UI-layout service peers to `0.2.2-rc.5`. It declares `engines.dsh` as that exact
 version. It also pins `pdfjs-dist` and the shared
 `@napi-rs/canvas@1.0.3` runtime without initializing either during entrypoint
 registration, requires Node `>=24.9.0`, and carries the
@@ -302,13 +315,27 @@ Packaging and verification never publish.
 bun run dsh:npm:release:verify
 ```
 
-That gate builds the version explicitly recorded in `dsh/bundle.json`, installs
-it in a clean prefix/profile through the tested DSH `0.2.2-rc.1` CLI, verifies
-receipt consumption/isolation/resume and authenticated web client assets, runs
+That gate builds the release candidate recorded in `dsh/bundle.json`,
+installs it in a clean prefix/profile through the DSH `0.2.2-rc.5` CLI, verifies
+receipt consumption, isolation, resume, and authenticated web client assets, runs
 `npm publish --dry-run`, and checks version availability. Other host versions
 require a separate compatibility review.
 See [the 2026-11-08 contract review](dsh/README.md#contract-review--2026-11-08)
 and [the previous 2026-10-18 review](dsh/README.md#contract-review--2026-10-18).
+
+The 2026-11-19 DSH publication uses the verified T6 tarball:
+
+```text
+dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.19.tgz
+sha256: 7f754810a3e8bdb9a3472eaef6cefb4093dffa2d7517c2c3ff84d2f2192b1085
+```
+
+DSH `0.1.19` is published as `latest`, the patch after `0.1.18`.
+It requires DSH `0.2.2-rc.5`, matching service peers, and Node `>=24.9.0`.
+The chart picker’s **Remove all** clears the active session’s floating stack.
+npm recorded publication at `2026-11-19T14:46:30.020Z`. The public tarball matched
+the reviewed checksum. Preflight, registry evidence and the downloaded
+artifact are retained under `.work/releases/dsh/0.1.19/remove-all/`.
 
 The 2026-11-08 DSH publication uses the verified T6 tarball:
 
@@ -317,7 +344,7 @@ dist/dsh/npm/t6/dsh-sparkles-dsh-sparkles-0.1.18.tgz
 sha256: e70022c7bc6d00d4b275a3b2ef0e80dc90617f610bc43139ee7fad8258bc2bfa
 ```
 
-DSH `0.1.18` is published as `latest`, selected as the next patch of published
+DSH `0.1.18` was published as `latest`, selected as the next patch of published
 `0.1.17`. Pi remains independently published at `0.1.16`. The package requires
 exactly DSH `0.2.2-rc.1`, matching service peers, `engines.dsh`, and Node
 `>=24.9.0`. There is no stable DSH `0.2.2`. Published `0.1.17` remains the

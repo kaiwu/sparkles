@@ -5,6 +5,12 @@ here. Versions follow Semantic Versioning. The exact selected tier, plugin
 inventory, maturity, and content hashes remain authoritative in each tarball's
 `release-lock.json` and `aggregate-lock.json`.
 
+## 0.1.17 - 2026-11-19
+
+- Target Pi 1.5.2 and align Pi Durable, Chord, Pi AI, and the development TUI
+  dependency to 1.5.2. Require the exact Pi version in the installed-host
+  smoke and check that the installed tarball registers its finance commands.
+
 ## 0.1.16 - 2026-11-05
 
 - Test the package with Pi 1.5.0. Bundle Pi Durable, Chord, and Pi AI at 1.5.0,

@@ -128,8 +128,10 @@ the entire group; chart pan/zoom and visibility controls do not initiate a drag.
 Tall stacks scroll within the available space above the bar.
 
 Each card has a Hide button. The Charts control above the bar exposes a
-separate checkbox for each retained chart, including hidden ones. Visibility
-is browser-local, keyed by session and call identity, and resets on page reload.
+separate checkbox for each listed chart, including hidden ones. **Remove all**
+clears every entry from the current session's picker and floating stack. Both
+choices are browser-local, keyed by session and call identity, and reset on
+page reload.
 The keyed `tool.call.toolview` contribution retains the exact text output and
 points to the floating panel; collapsing it cannot hide a floating chart. Older
 results beyond the 12-card panel budget retain their exact transcript output.

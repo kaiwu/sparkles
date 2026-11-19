@@ -74,11 +74,14 @@ function FinanceTrackOverlay(props) {
   var reviewText = props.useSessions(reviewStatusText);
   var chartView = props.useSessions(currentCharts);
   var sessionId = props.useSessions(currentSessionId);
-  var hiddenState = React.useState({});
-  var hiddenBySession = hiddenState[0];
-  var setHidden = hiddenState[1];
-  var hidden = Array.isArray(hiddenBySession[sessionId]) ? hiddenBySession[sessionId] : [];
-  var charts = chartView ? chartView.charts.filter(function (chart) { return chartModel({ kind: "tool-result", meta: chart.meta }) !== null; }) : [];
+  var selectionState = React.useState(Object.create(null));
+  var selection = selectionState[0][sessionId];
+  var setSelections = selectionState[1];
+  var hidden = selection?.hidden ?? [];
+  var removed = selection?.removed ?? [];
+  var charts = chartView ? chartView.charts.filter(function (chart) {
+    return !removed.includes(chart.id) && chartModel({ kind: "tool-result", meta: chart.meta }) !== null;
+  }) : [];
   var visible = charts.filter(function (chart) { return hidden.indexOf(chart.id) === -1; });
   var text = [trackText, reviewText].filter(function (value) { return typeof value === "string" && value.length > 0; }).join(" · ");
   var positionState = React.useState(null);
@@ -125,12 +128,25 @@ function FinanceTrackOverlay(props) {
   }, [text, charts.length]);
   if (text.length === 0 && charts.length === 0) return null;
   function toggleChart(id) {
-    setHidden(function (previous) {
-      var ids = Array.isArray(previous[sessionId]) ? previous[sessionId] : [];
+    setSelections(function (previous) {
+      var current = previous[sessionId];
+      var ids = current?.hidden ?? [];
       var next = Object.assign(Object.create(null), previous);
-      next[sessionId] = ids.indexOf(id) === -1 ? ids.concat(id) : ids.filter(function (value) { return value !== id; });
+      next[sessionId] = {
+        removed: current?.removed ?? [],
+        hidden: ids.includes(id) ? ids.filter(function (value) { return value !== id; }) : ids.concat(id)
+      };
       return next;
     });
+  }
+  function removeAllCharts() {
+    var ids = chartView.charts.map(function (chart) { return chart.id; });
+    setSelections(function (previous) {
+      var next = Object.assign(Object.create(null), previous);
+      next[sessionId] = { removed: ids, hidden: [] };
+      return next;
+    });
+    statusBar.current?.focus({ preventScroll: true });
   }
   function onPointerDown(event) {
     if (event.button !== 0) return;
@@ -257,9 +273,13 @@ function FinanceTrackOverlay(props) {
       });
     })),
     React.createElement("div", { ref: floor, "data-dsh-sparkles-chart-floor": "true", style: { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px", pointerEvents: "auto", maxWidth: "100%" } },
-      charts.length === 0 ? null : React.createElement("details", { style: { background: "var(--dsw-alias-bg-base)", border: "1px solid var(--dsw-alias-border-l2)", borderRadius: "8px", maxWidth: "100%", fontSize: "12px", padding: "4px 8px" } },
-        React.createElement("summary", { style: { cursor: "pointer" } }, "Charts " + visible.length + "/" + charts.length),
-        React.createElement("div", { style: { display: "flex", flexDirection: "column", maxHeight: "120px", overflowY: "auto", paddingTop: "4px" } }, charts.map(function (chart) {
+      charts.length === 0 ? null : React.createElement("details", { style: { position: "relative", background: "var(--dsw-alias-bg-base)", border: "1px solid var(--dsw-alias-border-l2)", borderRadius: "8px", maxWidth: "100%", fontSize: "12px", padding: "4px 8px" } },
+        React.createElement("summary", { style: { cursor: "pointer", width: "max-content", lineHeight: "21px" } }, "Charts " + visible.length + "/" + charts.length),
+        React.createElement("button", {
+          type: "button", onClick: removeAllCharts, "aria-label": "Remove all charts",
+          style: { position: "absolute", top: "4px", right: "8px", fontSize: "inherit" }
+        }, "Remove all"),
+        React.createElement("div", { style: { display: "flex", flexDirection: "column", minWidth: "min(200px, calc(100vw - 50px))", maxHeight: "120px", overflowY: "auto", paddingTop: "4px" } }, charts.map(function (chart) {
           return React.createElement("label", { key: chart.id, style: { display: "flex", alignItems: "center", gap: "6px" } },
             React.createElement("input", { type: "checkbox", checked: hidden.indexOf(chart.id) === -1, onChange: function () { toggleChart(chart.id); }, "aria-label": "Show chart " + chartLabel(chart) }), chartLabel(chart));
         })),
@@ -347,7 +367,7 @@ function DshChartToolView(props) {
   var retained = view && view.charts.some(function (chart) { return chart.id === props.callId; });
   if (retained && chartModel(props.block) !== null) {
     return React.createElement("div", { "data-dsh-sparkles-chart": "tool-output", style: { padding: "8px 10px" } },
-      React.createElement("div", null, "Chart available above the finance status bar. Use Charts there to show or hide it."),
+      React.createElement("div", null, "Use the Charts picker above the finance status bar to manage floating charts."),
       React.createElement("details", null, React.createElement("summary", null, "Exact table output"),
         React.createElement("pre", { style: { overflowX: "auto", whiteSpace: "pre", fontSize: "11px" } }, blockText(props.block))));
   }

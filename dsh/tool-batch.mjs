@@ -1,4 +1,4 @@
-// DSH 0.2.2-rc.1 executes tools as a batch. One registered call is still one
+// DSH executes tools as a batch. One registered call is one
 // tool-call block; callers keep the unwrapped execution result.
 import { DSH_HOST_VERSION } from "./runtime-contract.mjs";
 

@@ -5,6 +5,13 @@ follow Semantic Versioning. The exact tier, plugin inventory, maturity, and
 content hashes remain authoritative in each tarball's `dsh-lock.json` and
 `release-lock.json`.
 
+## 0.1.19 - 2026-11-19
+
+- Add **Remove all** to the chart picker. It clears the active session's
+  picker and dismisses its floating charts.
+- Require DSH `0.2.2-rc.5` for the host, `engines.dsh`, and the tested service
+  peers. Use the same host version in CI and the clean installation smoke.
+
 ## 0.1.18 - 2026-11-08
 
 - Require DSH `0.2.2-rc.1` for the host and tested service peers. Declare exact
