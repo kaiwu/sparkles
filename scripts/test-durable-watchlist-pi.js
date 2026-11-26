@@ -29,7 +29,7 @@ let requests = 0;
 const body = JSON.stringify({ rc: 0, data: { f43: 130645, f44: 133380, f45: 130350, f46: 132836, f47: 42689, f51: 146120, f52: 119552, f57: "600519", f58: "fixture", f59: 2, f60: 132836, f86: Math.floor(Date.now() / 1000) } });
 globalThis.fetch = async (input) => {
   const url = new URL(String(input));
-  if (url.origin !== "https://push2.eastmoney.com" || url.pathname !== "/api/qt/stock/get" || url.searchParams.get("secid") !== "1.600519" || requests !== 0) throw new Error("unexpected durable Pi smoke request");
+  if (url.origin !== "https://push2.eastmoney.com" || url.pathname !== "/api/qt/stock/get" || url.searchParams.get("secid") !== "1.600519" || requests >= 2) throw new Error("unexpected durable Pi smoke request");
   requests++;
   return new Response(body, { headers: { "content-type": "application/json" } });
 };
@@ -51,7 +51,19 @@ export default (api) => {
         await call("watchlist_durable", { action: "close" });
         await call("watchlist_durable", { action: "enable", userAccepted: true });
         if ((await call("watchlist_durable_snapshot")).details.storeRevision !== 1) throw new Error("durable Pi reopen failed");
-        console.log("SPARKLES_DURABLE_PI_PASS");
+        const due = Date.now() + 3600000;
+        await call("watchlist_review_schedule", { requestId: "early", watchlist: "core", provider: "eastmoney", shareClass: "a_share", maximumRequestsPerReview: 1, firstDueUnixMilliseconds: due, intervalMilliseconds: 3600000, maximumReviews: 1 });
+        const advance = { requestId: "early", expectedCycleIndex: 0 };
+        if ((await call("watchlist_review_advance", advance)).details.status !== "delivered") throw new Error("scheduled slot did not accept early wake");
+        await call("watchlist_review_advance", advance);
+        let job;
+        for (let attempt = 0; attempt < 200; attempt++) {
+          job = (await call("watchlist_review_status")).details.jobs.find((entry) => entry.requestId === "early");
+          if (job.taskState.status === "terminal") break;
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        if (job.taskState.outcome !== "completed" || job.completedReviews !== 1 || job.latest.trigger !== "requested_early" || job.latest.dueAtUnixMilliseconds !== due || job.latest.facts[0].status !== "checked" || requests !== 2) throw new Error("early review receipt or request count incorrect");
+        console.error("SPARKLES_DURABLE_PI_PASS");
       } catch (error) { code = 1; console.error(error.message); }
       finally { try { await call("watchlist_durable", { action: "disable" }); } catch {} process.exit(code); }
     });
@@ -68,6 +80,8 @@ export default (api) => {
         driver,
         "--extension",
         aggregateDirectory,
+        "--offline",
+        "--no-session",
         "--mode",
         "rpc",
       ],
@@ -92,7 +106,7 @@ export default (api) => {
         new Response(process.stderr).text(),
         process.exited,
       ]);
-      if (code !== 0 || !stdout.includes("SPARKLES_DURABLE_PI_PASS"))
+      if (code !== 0 || !stderr.split(/\r?\n/).includes("SPARKLES_DURABLE_PI_PASS"))
         throw new Error(
           `Durable cumulative Pi smoke failed (${code}): ${stderr}\n${stdout}`,
         );

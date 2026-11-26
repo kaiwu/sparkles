@@ -44,7 +44,7 @@ export async function buildPlugin(plugin) {
     "dev",
     "javascript",
     plugin.name,
-    `${plugin.name}${plugin.shortName === "watchlist" ? "_pi" : ""}.mjs`,
+    `${plugin.name}${["watchlist", "finance_track_status"].includes(plugin.shortName) ? "_pi" : ""}.mjs`,
   );
   const adapter = join(WORK_DIR, "adapters", `${plugin.shortName}.mjs`);
   mkdirSync(dirname(adapter), { recursive: true });

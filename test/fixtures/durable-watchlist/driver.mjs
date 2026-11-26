@@ -119,8 +119,13 @@ try {
     });
     if (mode === "crash") await new Promise(() => {});
   }
-  if (["schedule", "resume-sleeping", "resume"].includes(mode)) {
-    const expected = mode === "resume" ? "terminal" : "sleeping";
+  if (mode === "advance") {
+    const input = { requestId: "crash-review", expectedCycleIndex: 0 };
+    console.log(`ADVANCE:${(await call("watchlist_review_advance", input)).details.status}`);
+    await call("watchlist_review_advance", input);
+  }
+  if (["schedule", "resume-sleeping", "resume", "advance"].includes(mode)) {
+    const expected = mode === "resume" || mode === "advance" ? "terminal" : "sleeping";
     for (let attempt = 0; attempt < 100; attempt++) {
       const jobs = (await call("watchlist_review_status")).details.jobs;
       if (jobs[0]?.taskState.status === expected) {

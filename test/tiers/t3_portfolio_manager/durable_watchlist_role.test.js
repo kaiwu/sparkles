@@ -299,6 +299,42 @@ describe("Pi Durable personal watchlist role", () => {
     ).toBe("aborted");
   });
 
+  test("advancing a pinned slot preserves its budget and cadence across duplicate or stale requests", async () => {
+    const instance = await harness();
+    await enable(instance, await directory());
+    await instance.call("watchlist_add", member("hk"));
+    const { input: pinned } = await save(instance);
+    const schedule = {
+      ...review(), maximumReviews: 2, firstDueUnixMilliseconds: Date.now() + 60000, intervalMilliseconds: 3600000,
+    };
+    const admitted = (await instance.call("watchlist_review_schedule", schedule)).details;
+    await instance.call("watchlist_add", member("us"));
+    await save(instance, "revised", 1);
+    const advance = (index) => instance.call("watchlist_review_advance", { requestId: "review", expectedCycleIndex: index });
+    expect((await advance(1)).details.status).toBe("cycle_unavailable");
+    const responses = await Promise.all([advance(0), advance(0)]);
+    expect(responses.filter((reply) => reply.details.status === "delivered")).toHaveLength(1);
+    for (const reply of responses) {
+      expect(reply.details).toMatchObject({ taskId: admitted.taskId, cycleIndex: 0 });
+    }
+    let job;
+    for (let i = 0; i < 100; i++) {
+      [job] = (await instance.call("watchlist_review_status")).details.jobs;
+      if (job.taskState.status === "sleeping" && job.taskState.cycleIndex === 1) break;
+      await Bun.sleep(20);
+    }
+    expect(job).toMatchObject({
+      completedReviews: 1,
+      latest: { trigger: "requested_early", cycleIndex: 0, snapshotSha256: pinned.snapshotSha256,
+        dueAtUnixMilliseconds: schedule.firstDueUnixMilliseconds },
+      taskState: { cycleIndex: 1, nextDueUnixMilliseconds: schedule.firstDueUnixMilliseconds + 3600000 },
+    });
+    expect(job.latest.facts.map((fact) => fact.track)).toEqual(["hk"]);
+    expect((await advance(0)).details.status).toBe("cycle_unavailable");
+    await instance.call("watchlist_review_cancel", { requestId: "review" });
+    expect((await advance(1)).details.status).toBe("cycle_unavailable");
+  });
+
   test("rejects another writer without damaging the active store", async () => {
     const path = await directory();
     const one = await harness(),
@@ -311,15 +347,21 @@ describe("Pi Durable personal watchlist role", () => {
 });
 
 // Sleep checkpoints retain the due time across host processes without a read.
-test("a sleeping review survives reopen and executes once when due across Bun and Node", async () => {
+test.each([
+  ["timer", "resume", 1, "due_time"],
+  ["early signal", "advance", -1, "requested_early"],
+  ["legacy timer", "advance", -1, "requested_early"],
+  ["signal at deadline", "advance", 0, "due_time"],
+])("%s consumes one scheduled slot across Bun and Node restarts", async (scenario, action, offset, trigger) => {
   const path = await directory();
   const driver = resolve(import.meta.dir, "../../fixtures/durable-watchlist/driver.mjs");
   const now = 1793059200000;
   const due = now + 60000;
-  for (const [runtime, mode, clock] of [
-    ["bun", "schedule", now],
-    ["node", "resume-sleeping", due - 10000],
-    ["node", "resume", due + 1],
+  for (const [runtime, mode, clock, reads] of [
+    ["bun", "schedule", now, 0],
+    ["node", "resume-sleeping", due - 10000, 0],
+    ["node", action, due + offset, 1],
+    ["bun", "resume", due + 1000, 0],
   ]) {
     const child = Bun.spawn([runtime, driver, mode, path, String(clock)], {
       stdout: "pipe",
@@ -339,8 +381,24 @@ test("a sleeping review survives reopen and executes once when due across Bun an
     if (code !== 0) throw new Error(`${mode} failed (${code}): ${stderr}\n${stdout}`);
     expect(stdout).toContain("RESULT:");
     const job = JSON.parse(stdout.split("RESULT:")[1].trim());
-    if (mode === "resume") {
-      expect(stdout.match(/SOURCE:/g)).toHaveLength(1);
+    expect(stdout.match(/SOURCE:/g) ?? []).toHaveLength(reads);
+    if (scenario === "legacy timer" && mode === "schedule") {
+      // Recreate the persisted timer-only record written by 0.1.17, after the writer exits.
+      const { openNodeJsonlStorage } = await import("@earendil-works/pi-durable/storage/jsonl/node");
+      const { BACKGROUND_CONTEXT: ctx } = await import("@earendil-works/chord/context");
+      const storage = await openNodeJsonlStorage(path, ctx, { fsync: true });
+      try {
+        const task = await storage.task(job.taskId, ctx);
+        const { signals, ...timerOnly } = task.state;
+        expect(signals).toHaveLength(1);
+        const write = { type: "task", value: { ...task, state: timerOnly } };
+        expect((await storage.commit([[write]], () => {}, ctx)).kind).toBe("stored");
+      } finally {
+        await storage.close(ctx);
+      }
+    }
+    if (mode === "resume" || mode === "advance") {
+      expect(job.latest).toMatchObject({ trigger, dueAtUnixMilliseconds: due, sourceAttemptCount: 1, toolInvocationCount: 1 });
       expect(job.completedReviews).toBe(1);
       expect(job.taskState.outcome).toBe("completed");
       expect(job.latest.facts[0].status).toBe("checked");

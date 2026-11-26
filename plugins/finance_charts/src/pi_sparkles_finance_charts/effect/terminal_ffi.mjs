@@ -463,14 +463,27 @@ class FinanceChartResult {
   }
 
   setResult(result, expanded, theme) {
+    if (this.result !== result || this.expanded !== expanded || this.theme !== theme) {
+      this.invalidate();
+    }
     this.result = result;
     this.expanded = expanded;
     this.theme = theme;
   }
 
-  invalidate() {}
+  invalidate() {
+    this.cachedLines = undefined;
+  }
 
   render(width) {
+    if (this.cachedLines === undefined || this.cachedWidth !== width) {
+      this.cachedLines = Object.freeze(this.renderLines(width));
+      this.cachedWidth = width;
+    }
+    return this.cachedLines;
+  }
+
+  renderLines(width) {
     const chart = renderChart(this.result, width, this.theme);
     const text = resultText(this.result);
     const safeWidth = contentWidth(width);

@@ -404,6 +404,29 @@ describe("finance charts bundled boundary", () => {
     expect(wideLines.join("\n")).not.toContain("\u001b[");
   });
 
+  test("reuses read-only lines until width, result, presentation or host invalidation changes", async () => {
+    const definition = (await harness()).get("chart_ohlcv");
+    const result = await execute(definition, input());
+    const theme = {};
+    const bind = (value, expanded, palette, lastComponent) =>
+      definition.renderResult(value, { expanded }, palette, { lastComponent });
+    const chart = bind(result, false, theme, null);
+    let lines = chart.render(80);
+    expect(Object.isFrozen(lines)).toBe(true);
+    expect(bind(result, false, theme, chart).render(80)).toBe(lines);
+    expect(chart.render(40)).not.toBe(lines);
+    lines = chart.render(80);
+    chart.invalidate();
+    expect(chart.render(80)).not.toBe(lines);
+    lines = chart.render(80);
+    expect(bind(result, true, theme, chart).render(80)).not.toBe(lines);
+    lines = chart.render(80);
+    const newTheme = {};
+    expect(bind(result, true, newTheme, chart).render(80)).not.toBe(lines);
+    const updated = { content: [{ type: "text", text: "new chart result" }], details: {} };
+    expect(bind(updated, true, newTheme, chart).render(80)).toEqual(["new chart result"]);
+  });
+
   test("renders volume with proportional eighth-row heights", async () => {
     const tools = await harness();
     const definition = tools.get("chart_ohlcv");

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { ROOT } from "./modules.js";
 
 export const PI_DURABLE_EXTERNALS = ["bun:sqlite"];
-export const TESTED_PI_HOST_VERSION = "1.5.2";
+export const TESTED_PI_HOST_VERSION = "1.6.1";
 
 export function assertPiHostVersion(output) {
   const version = output.trim();

@@ -78,7 +78,7 @@ jobs:
       - name: Install the selected package's tested host
         run: |
           case "$RELEASE_LANE" in
-            pi) npm install --global @earendil-works/pi-coding-agent@1.5.2 ;;
+            pi) npm install --global @earendil-works/pi-coding-agent@1.6.1 ;;
             dsh) npm install --global @deepseek-ai/dsh@0.2.2-rc.5 ;;
             *) exit 1 ;;
           esac

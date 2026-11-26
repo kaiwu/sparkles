@@ -5,6 +5,17 @@ here. Versions follow Semantic Versioning. The exact selected tier, plugin
 inventory, maturity, and content hashes remain authoritative in each tarball's
 `release-lock.json` and `aggregate-lock.json`.
 
+## 0.1.18 - 2026-11-26
+
+- Cache terminal OHLCV chart lines across redraws.
+- Bring one scheduled watchlist cycle forward with `watchlist_review_advance`,
+  retaining its original due time, pinned inputs and review budget.
+- Show model-provider HTTP errors and Retry-After delays in Pi when
+  `--finance-model-diagnostics` is enabled.
+- Target Pi 1.6.1 and align the bundled watchlist SDKs and development TUI with that release.
+- Verify extension loading through a watchlist RPC session on the standalone
+  and npm Pi CLIs. The probe writes its completion marker to stderr.
+
 ## 0.1.17 - 2026-11-19
 
 - Target Pi 1.5.2 and align Pi Durable, Chord, Pi AI, and the development TUI

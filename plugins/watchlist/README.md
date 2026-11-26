@@ -84,7 +84,14 @@ progress, content-bound, and not provider-authenticated. Tool invocations are
 counted when known; transport request counts and interrupted invocation counts
 remain unknown where the underlying capability cannot prove them.
 
-`watchlist_review_status` exposes jobs, next due time and latest receipts.
+`watchlist_review_status` exposes jobs, next due time, current cycle index and latest receipts.
+In Pi, “run my next scheduled review now” calls `watchlist_review_advance` with
+the schedule's `requestId` and the exact `taskState.cycleIndex` as
+`expectedCycleIndex`. A delivered signal wakes that slot asynchronously.
+Inspect status for its receipt. Retrying the same index cannot spend the next
+slot. The review keeps its pinned picks, provider, request budget and original
+due time. Subsequent slots keep their cadence. Receipts record `requested_early`
+or `due_time`. Existing sleeping schedules acquire this capability on reopen.
 `watchlist_review_cancel(requestId)` cancels that task and its owned source
 calls. `watchlist_durable(action="close")` pauses the current connection;
 `action="disable"` also stops automatic reopening. Saved data is retained.
@@ -102,7 +109,7 @@ selected store when its lifetime budgets are exhausted. Branch collection
 limits remain 20 lists, 200 members per list, 1,000 members total, 20 tags per
 member, and 10,000 mutations per branch.
 
-The Pi sibling lazily bundles Pi Durable, Chord and Pi AI at 1.5.2, matching
+The Pi sibling lazily bundles Pi Durable, Chord and Pi AI at 1.6.1, matching
 the tested Pi host. The exact build pins let compiled Pi load the SDK locally
 after opt-in. The store adapter calls Durable's
 group `commit(batches, receive, context)` and keeps the byte budget and private

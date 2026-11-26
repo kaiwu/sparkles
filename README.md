@@ -22,8 +22,8 @@ mutate a paper or live order.
 Pi:
 
 ```sh
-npm install --global @earendil-works/pi-coding-agent@1.5.2
-pi install npm:@pi-sparkles/pi-sparkles@0.1.17
+npm install --global @earendil-works/pi-coding-agent@1.6.1
+pi install npm:@pi-sparkles/pi-sparkles@0.1.18
 export AGENT_CONTACT="ops@example.com"
 pi --finance-track cn
 ```
@@ -47,9 +47,8 @@ provider fetch. A missing adapter is allowed and never triggers fallback.
 | Tiers | T1–T6 ProductUseful in independent Pi and DSH lanes · 0 open Pi blockers · [tiers.json](tiers.json) |
 | Inventory | 135 ledger plugins · 142 Gleam plugin packages · 77 finance libraries |
 | Tracks | closed `cn` / `hk` / `us` |
-| Pi release | `@pi-sparkles/pi-sparkles@0.1.17` · tested with Pi `1.5.2` |
+| Pi release | `@pi-sparkles/pi-sparkles@0.1.18` · tested with Pi `1.6.1` |
 | DSH release | `@dsh-sparkles/dsh-sparkles@0.1.19` · requires DSH `0.2.2-rc.5` and Node `>=24.9.0` |
-| Source package targets | Pi `1.5.2` · DSH `0.2.2-rc.5` |
 | Build toolchain | Gleam `1.18.0` · Bun `1.3.14` |
 
 The seven packages excluded from the aggregate (`hello`, `lifecycle`,
@@ -89,8 +88,12 @@ Try: “My picks are CN 600519 and CN 600000.” If Pi offers to remember them,
 reply “Yes, remember these picks across chats.” In another chat, ask to show
 the saved watchlist or review it once using Eastmoney A-share quotes. Pi Durable
 follows Pi's release version: this checkout bundles Durable, Chord and Pi AI
-1.5.2 to match the Pi 1.5.2 host. They initialize after opt-in. DSH uses
+1.6.1 to match the Pi 1.6.1 host. They initialize after opt-in. DSH uses
 its native per-session watchlist storage and review runner.
+
+Pi 0.1.18 also accepts “run my next scheduled review now” for
+an existing watchlist schedule. Launch Pi with `--finance-model-diagnostics`
+to show model-provider HTTP errors and their Retry-After delay.
 
 ## Docs
 
@@ -117,15 +120,14 @@ runtime verification.
 ```sh
 bun run tier:audit
 bun run aggregate:build
-pi --no-extensions -e ./dist/aggregate/t6 --list-models
-bun run test:aggregate:pi
+bun run test:aggregate:pi -- --no-build
 ```
 
 `test:aggregate:pi` loads the cumulative T1–T6 entrypoint once. Per-plugin and
 earlier-tier Pi-load targets are not part of verification. It uses a hydrated
-`PI_SOURCE_DIR` checkout when its coding-agent version matches the package's
-target. The default checkout is `/home/kaiwu/Documents/github/pi-mono` in this
-workspace. Otherwise the test uses the matching installed Pi CLI.
+`PI_SOURCE_DIR` checkout at the clean Git tag for the tested Pi release. The
+default checkout is `/home/kaiwu/Documents/github/pi-mono` in this workspace.
+Otherwise the test uses the matching installed Pi CLI.
 
 Focused diagnostics stay cheap; promotion is always a whole tier:
 

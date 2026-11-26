@@ -130,3 +130,11 @@ The status tool returns the standard top-level `track` and versioned
 and persistence scope. It also returns `sourceCredibility` and
 `featureCoverage` receipts plus their display percentages. Headless mode has no
 UI statusline but remains fully operable through tools.
+
+## Pi model diagnostics
+
+Start Pi with `--finance-model-diagnostics` to show a warning for each model-provider
+HTTP error that Pi reports. When Retry-After supplies seconds or an HTTP date,
+the warning includes the requested delay in seconds. The diagnostic displays the
+status and parsed delay only. It is off by default. Market-data requests continue
+to use their own provider receipts and HTTP policies.

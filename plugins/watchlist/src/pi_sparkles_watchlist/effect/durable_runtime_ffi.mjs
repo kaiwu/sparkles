@@ -128,6 +128,35 @@ async function writerLease(path) {
   }
 }
 
+// An older release parked these same tasks on the original deadline alone.
+// Add the signal to their existing sleep before the Harness opens its caches.
+// The exclusive writer lease and one storage batch cover the whole upgrade.
+async function upgradeSleepingReviews(storage, review, advance, context) {
+  const page = await storage.scanTasks(
+    { kind: review.name, status: "sleeping" }, 10, undefined, context,
+  );
+  if (page.next !== undefined) throw new Error("watchlist_schedule_budget_exceeded");
+  const writes = [];
+  for (const task of page.items) {
+    const state = task.state;
+    if (task.version !== 1 || state.signals !== undefined) continue;
+    const checkpoint = state.checkpoint;
+    if (
+      checkpoint.phase !== "start" || !Number.isSafeInteger(state.until) ||
+      checkpoint.due !== state.until || !Number.isSafeInteger(checkpoint.cycleIndex) ||
+      checkpoint.cycleIndex < 0 || checkpoint.cycleIndex >= task.input.maximumReviews
+    ) {
+      throw new Error("unrecognized_watchlist_review_sleep");
+    }
+    const signals = [advance.key(String(checkpoint.cycleIndex))];
+    writes.push({ type: "task", value: { ...task, state: { ...state, signals } } });
+  }
+  if (writes.length > 0) {
+    const result = await storage.commit([writes], () => {}, context);
+    if (result.kind !== "stored") throw new Error("watchlist_review_sleep_upgrade_refused");
+  }
+}
+
 export function new_runtime(
   path,
   invoke,
@@ -151,6 +180,7 @@ export function new_runtime(
       await checkDirectory(path, true);
       const lease = await writerLease(path);
       let harness;
+      let storage;
       let closeContext;
       try {
         const [
@@ -254,6 +284,11 @@ export function new_runtime(
           },
           abort,
         });
+        const advance = sdk.defineSignal({
+          name: "pi-sparkles.watch-review-advance",
+          version: 1,
+          schema: { type: "boolean", const: true },
+        });
         const Review = defineTask({
           name: "pi-sparkles.watch-review",
           version: 1,
@@ -265,11 +300,13 @@ export function new_runtime(
           }),
           phases: {
             due: async (task, runtime, taskContext) => {
-              await runtime.sleepUntil(
-                task.state.checkpoint.due,
-                { ...task.state.checkpoint, phase: "start" },
-                taskContext,
-              );
+              const checkpoint = task.state.checkpoint;
+              await runtime.commit(() => ({
+                status: "sleeping",
+                until: checkpoint.due,
+                signals: [advance.key(String(checkpoint.cycleIndex))],
+                checkpoint: { ...checkpoint, phase: "start" },
+              }), taskContext);
             },
             start: async (task, runtime, taskContext) => {
               const cycle = admitted(
@@ -281,6 +318,7 @@ export function new_runtime(
                   checkpoint: {
                     ...task.state.checkpoint,
                     phase: "collect",
+                    trigger: task.state.wake?.reason === "signal" ? "requested_early" : "due_time",
                     cycle,
                     index: 0,
                     facts: [],
@@ -413,6 +451,7 @@ export function new_runtime(
                 snapshotSha256: task.input.snapshotSha256,
                 watchlist: task.input.watchlist,
                 dueAtUnixMilliseconds: state.due,
+                trigger: state.trigger ?? "due_time",
                 startedAtUnixMilliseconds:
                   state.cycle.startedAtUnixMilliseconds,
                 completedAtUnixMilliseconds: runtime.now(),
@@ -460,7 +499,7 @@ export function new_runtime(
             tasks: [Source, Review],
           }),
         );
-        const storage = await openNodeJsonlStorage(path, context, {
+        storage = await openNodeJsonlStorage(path, context, {
           fsync: true,
         });
         const write = storage.commit.bind(storage);
@@ -484,6 +523,7 @@ export function new_runtime(
           }
           return result;
         };
+        await upgradeSleepingReviews(storage, Review, advance, context);
         harness = await Harness.open(
           storage,
           { models: createModels(), registry },
@@ -494,11 +534,15 @@ export function new_runtime(
           await tx.doc(Store, root.id);
         }, context);
         harness.resume();
-        return { harness, root, Store, Review, context, lease };
+        return { harness, root, Store, Review, advance, context, lease };
       } catch (error) {
-        await harness?.close(closeContext);
-        lease.close();
-        connection = undefined;
+        try {
+          if (harness) await harness.close(closeContext);
+          else await storage?.close(closeContext);
+        } finally {
+          lease.close();
+          connection = undefined;
+        }
         throw error;
       }
     })();
@@ -531,6 +575,7 @@ export function new_runtime(
             taskState: {
               status: task.state.status,
               phase: task.state.checkpoint?.phase,
+              cycleIndex: task.state.checkpoint?.cycleIndex,
               nextDueUnixMilliseconds: task.state.checkpoint?.due,
               outcome: task.state.outcome?.status,
             },
@@ -543,6 +588,29 @@ export function new_runtime(
             scheduling: "active_only_while_pi_owns_store",
           }),
         );
+      }, context);
+    }
+    if (operation === "advance") {
+      const { requestId, expectedCycleIndex } = JSON.parse(input);
+      if (!Number.isSafeInteger(expectedCycleIndex) || expectedCycleIndex < 0 || expectedCycleIndex >= 30)
+        throw new Error("invalid_review_cycle_index");
+      return root.commit(async (tx) => {
+        const doc = await tx.doc(Store, root.id);
+        const job = doc.jobs.find((job) => job.requestId === requestId);
+        if (!job) throw new Error("review_request_not_found");
+        if (doc.admissions[requestId].operation !== "schedule")
+          throw new Error("advance_requires_scheduled_review");
+        const task = await tx.task(job.taskId);
+        const state = task.state;
+        const checkpoint = state.checkpoint;
+        const reply = { requestId, taskId: job.taskId, cycleIndex: expectedCycleIndex };
+        if (task.abortRequested || !checkpoint || checkpoint.cycleIndex !== expectedCycleIndex)
+          return { ...reply, status: "cycle_unavailable" };
+        if (checkpoint.phase !== "due" && !(state.status === "sleeping" && checkpoint.phase === "start"))
+          return { ...reply, status: "already_started" };
+        if (Date.now() >= checkpoint.due) return { ...reply, status: "already_due" };
+        const status = await tx.signal(job.taskId, c.advance, String(expectedCycleIndex), true);
+        return { ...reply, status };
       }, context);
     }
     if (operation === "cancel") {

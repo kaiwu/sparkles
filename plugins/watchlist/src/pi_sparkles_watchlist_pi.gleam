@@ -117,6 +117,18 @@ pub fn extension(api: pi.ExtensionApi) -> Promise(Nil) {
   register(
     api,
     control,
+    "watchlist_review_advance",
+    "advance",
+    "Bring the specified cycle of an existing schedule forward once. Uses its pinned snapshot, provider, request budget and scheduled slot; later reviews retain their original cadence. Delivery is asynchronous.",
+    "When the user asks to run the next scheduled review now, inspect watchlist_review_status, then copy the exact schedule requestId and taskState.cycleIndex. Check status for the resulting receipt. Retry only with the same cycle index.",
+    schema.object([
+      Required("requestId", schema.string()),
+      Required("expectedCycleIndex", schema.integer()),
+    ]),
+  )
+  register(
+    api,
+    control,
     "watchlist_review_cancel",
     "cancel",
     "Cancel the exact durable review requestId, including owned source tasks; finished reviews retain their terminal status",

@@ -37,6 +37,7 @@ function context(entries, statuses = [], notifications = []) {
 
 async function harness({
   initial = "us",
+  modelDiagnostics = false,
   contact = "agent@example.test",
   entries = [],
   activeTools = [
@@ -80,7 +81,7 @@ async function harness({
   const handlers = new Map();
   const events = [];
   process.env.AGENT_CONTACT = contact;
-  const flags = new Map([["finance-track", initial]]);
+  const flags = new Map([["finance-track", initial], ["finance-model-diagnostics", modelDiagnostics]]);
   let nextId = entries.length;
   const api = {
     events: {
@@ -120,6 +121,28 @@ async function harness({
 }
 
 describe("finance track status binding", () => {
+  test("model diagnostics show only HTTP errors and parsed retry delays after opt-in", async () => {
+    const notices = [];
+    const ctx = context([], [], notices);
+    const response = (status, headers = {}) => ({ type: "after_provider_response", status, headers });
+    const limited = response(429, { "Retry-After": "20", Authorization: "secret" });
+    const off = await harness();
+    await off.handlers.get("after_provider_response")(limited, ctx);
+    const on = await harness({ modelDiagnostics: true });
+    const report = on.handlers.get("after_provider_response");
+    await report(response(200), ctx);
+    await report(limited, { hasUI: false });
+    expect(notices).toEqual([]);
+    await report(limited, ctx);
+    await report(response(503, { "retry-after": "do not echo me" }), ctx);
+    await report(response(401), ctx);
+    expect(notices).toEqual([
+      { message: "Model provider returned HTTP 429 · Retry-After: 20s", kind: "warning" },
+      { message: "Model provider returned HTTP 503", kind: "warning" },
+      { message: "Model provider returned HTTP 401", kind: "warning" },
+    ]);
+  });
+
   test("declares required on every object tool schema", async () => {
     const instance = await harness();
     for (const tool of instance.tools.values()) {

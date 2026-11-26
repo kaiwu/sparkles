@@ -1,3 +1,4 @@
+import rootPackage from "../../package.json";
 import { describe, expect, test } from "bun:test";
 import {
   assertPiHostVersion,
@@ -8,9 +9,13 @@ import {
 describe("Pi release SDK alignment", () => {
   test("accepts only the tested Pi host in the smoke lanes", () => {
     expect(assertPiHostVersion(`${TESTED_PI_HOST_VERSION}\n`)).toBe(TESTED_PI_HOST_VERSION);
-    expect(() => assertPiHostVersion("1.5.0\n")).toThrow(
+    expect(() => assertPiHostVersion("1.5.2\n")).toThrow(
       `expected exact ${TESTED_PI_HOST_VERSION}`,
     );
+  });
+
+  test("the development TUI matches the TUI supplied by the tested Pi host", () => {
+    expect(rootPackage.devDependencies["@earendil-works/pi-tui"]).toBe(TESTED_PI_HOST_VERSION);
   });
 
   test("all bundled SDK pins belong to the tested host release", () => {

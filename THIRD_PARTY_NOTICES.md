@@ -11,14 +11,15 @@ third-party software. These notices do not change the licence of Pi Sparkles.
 | Gleam JSON | 3.1.0 | Apache-2.0 | https://github.com/gleam-lang/json |
 | Gleam JavaScript | 1.0.1 | Apache-2.0 | https://github.com/gleam-lang/javascript |
 | Zod | 4.4.3 | MIT | https://github.com/colinhacks/zod |
-| Pi Durable, Chord, Pi AI, Pi Schema | 1.5.2 | MIT | https://github.com/earendil-works/pi |
+| Pi Durable, Chord, Pi AI, Pi Schema, Pi Telemetry | 1.6.1 | MIT | https://github.com/earendil-works/pi |
+| partial-json | 0.1.7 | MIT | https://github.com/promplate/partial-json-parser-js |
 | TypeBox | 1.3.27 | MIT | https://github.com/sinclairzx81/typebox |
 
 The complete Apache License, Version 2.0 is distributed in `LICENSE`.
 `pdfjs-dist` remains an exact runtime dependency because the PDF text path
 resolves packaged CMap assets from it. Its optional `@napi-rs/canvas` polyfill
 is pinned explicitly for Bun compatibility. Both load only when a PDF tool is
-invoked. Pi host packages are not bundled into the npm tarball.
+invoked. The manifest declares Pi’s host packages as peers.
 
 ## @napi-rs/canvas MIT licence
 
@@ -67,16 +68,39 @@ SOFTWARE.
 ## Optional Pi Durable runtime
 
 `@earendil-works/pi-durable`, `@earendil-works/chord`, and
-`@earendil-works/pi-ai` are pinned to 1.5.2 and bundled as lazy initializers
+`@earendil-works/pi-ai` are pinned to 1.6.1 and bundled as lazy initializers
 inside the optional Pi watchlist artifact for compatibility with compiled Pi.
-That bundle uses Pi Schema for tool and document checks. TypeBox remains a
-host peer for the plain Pi package.
-They initialize after user opt-in. The included dependency licences follow
+The bundle also includes Pi Schema, Pi Telemetry and partial-json.
+These modules initialize after user opt-in. The included dependency licences follow
 below. DSH does not include this Pi Durable runtime.
 
 MIT License
 
 Copyright (c) 2025 Mario Zechner
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## partial-json MIT licence
+
+MIT License
+
+Copyright (c) 2023 Promplate Dev Team
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

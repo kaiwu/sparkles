@@ -340,6 +340,10 @@ Your credentials stay in your runtime environment. Sparkles for Pi does not add 
 to the package or save them in Pi settings. For a project-local installation,
 add \`--local\` to \`pi install\`.
 
+To see HTTP errors returned by the model provider during research, start Pi
+with \`--finance-model-diagnostics\`. Warnings include the HTTP status and any
+valid Retry-After delay in seconds.
+
 ## Remember personal picks with Pi Durable
 
 Sparkles can offer to remember watchlist picks across chats. Accept through
@@ -358,6 +362,9 @@ CN reviews reuse the selected Eastmoney A-share quote tool and runtime
 \`track_partial\`. Checks run while Pi is open. Interrupted reads remain
 unknown without automatic refetch. Ask to inspect receipts, cancel a review,
 or disable persistence through conversation. Saved data is retained on disable.
+
+If a review is already scheduled, ask “run my next scheduled review now”.
+Pi advances that slot once, keeps the pinned picks and preserves the cadence.
 
 Pi Durable and its SDK dependencies match the tested Pi ${TESTED_PI_HOST_VERSION}
 release. They are included and initialize only

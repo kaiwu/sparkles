@@ -7,7 +7,7 @@ JavaScript FFI modules adapt Pi's objects, callbacks, promises, optional values,
 and plain result objects.
 
 The package is under initial development, is not published to Hex yet, and is
-tested against Pi `1.5.2`. The name is provisional until its Hex availability
+tested against Pi `1.6.1`. The name is provisional until its Hex availability
 is confirmed.
 
 ## Minimal extension

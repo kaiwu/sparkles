@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { describe, expect, test } from "bun:test";
 import { NPM_REGISTRY, RELEASE_HOSTS, parseLatestCli, readReleaseVersion, releaseLatest, releaseVersionForLane } from "../../scripts/npm-release-latest.js";
+import { TESTED_PI_HOST_VERSION } from "../../scripts/pi-durable-dependencies.js";
 
 describe("npm release latest tags", () => {
   test.each(["pi", "dsh"])("%s version lookup never reads the other package's manifest", (lane) => {
@@ -19,7 +20,7 @@ describe("npm release latest tags", () => {
   test.each(["pi", "dsh"])("CI %s selection installs and verifies only its own host/package", (lane) => {
     const workflow = Bun.YAML.parse(readFileSync(new URL("../../.github/workflows/npm-publish.yml", import.meta.url), "utf8"));
     for (const [name, expected] of [
-      ["Install the selected package's tested host", lane === "pi" ? "npm install --global @earendil-works/pi-coding-agent@1.5.2" : "npm install --global @deepseek-ai/dsh@0.2.2-rc.5"],
+      ["Install the selected package's tested host", lane === "pi" ? `npm install --global @earendil-works/pi-coding-agent@${TESTED_PI_HOST_VERSION}` : "npm install --global @deepseek-ai/dsh@0.2.2-rc.5"],
       ["Build and verify the selected T6 release", lane === "pi" ? "bun run npm:release:verify" : "bun run dsh:npm:release:verify"],
     ]) {
       const step = workflow.jobs.publish.steps.find((step) => step.name === name);

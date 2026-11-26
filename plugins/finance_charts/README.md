@@ -56,6 +56,9 @@ a new observation, analytics result, or evidence claim. DSH consumes the same
 validated result but owns a floating browser chart stack described in
 [`../../CHARTS.md`](../../CHARTS.md).
 
+Pi reuses the last rendered chart lines until the terminal width, result, theme,
+expanded state, or host invalidation requires a redraw.
+
 ## Verification
 
 Twelve pure domain tests cover track, chronology, OHLC, units, gaps, omissions,
